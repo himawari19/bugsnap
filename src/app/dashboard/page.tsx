@@ -64,6 +64,7 @@ export default function DashboardPage() {
             {/* Thumbnail placeholder */}
             <div className="aspect-video bg-subtle flex items-center justify-center text-muted text-sm">
               {video.thumbnail ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={video.thumbnail}
                   alt={video.title}
