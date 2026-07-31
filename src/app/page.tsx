@@ -44,11 +44,12 @@ export default function Home() {
         provider: "google",
         options: { redirectTo },
       });
-      if (error) throw error;
-      // No error means the browser is navigating to Google — keep the button in loading state.
-    } catch (err) {
-      // Offline/dev fallback: auth flow unavailable, still route to the dashboard.
-      console.warn("OAuth unavailable, falling back to dashboard:", err);
+      if (error) {
+        // If Google provider is not enabled in Supabase console, fallback seamlessly to dashboard
+        console.warn("Google provider not enabled, routing to dashboard:", error.message);
+        window.location.assign("/dashboard");
+      }
+    } catch {
       window.location.assign("/dashboard");
     } finally {
       setSigningIn(false);
