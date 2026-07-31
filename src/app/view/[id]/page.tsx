@@ -34,7 +34,7 @@ function GoogleDriveViewer({ url, type }: { url: string; type: string }) {
   let embedVideoUrl = url;
   if (type === "video") {
     // Extract Google Drive File ID if present
-    const match = url.match(//d/([a-zA-Z0-9_-]+)/);
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       embedVideoUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
     }
@@ -90,18 +90,6 @@ function GoogleDriveViewer({ url, type }: { url: string; type: string }) {
 function DevToolsPanel({ logs }: { logs: DevLog[] }) {
   const [activeTab, setActiveTab] = useState<"info" | "console" | "network" | "actions">("info");
   const [copied, setCopied] = useState(false);
-  const [embedCopied, setEmbedCopied] = useState(false);
-
-  async function copyEmbedCode() {
-    const embedCode = `<iframe src="${window.location.origin}/view/${id}" width="100%" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
-    try {
-      await navigator.clipboard.writeText(embedCode);
-    } catch {
-      window.prompt("Copy embed code:", embedCode);
-    }
-    setEmbedCopied(true);
-    setTimeout(() => setEmbedCopied(false), 1500);
-  }
 
   const sortedLogs = [...logs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
   const consoleLogs = logs.filter((l) => l.type === "console");
@@ -311,6 +299,18 @@ export default function ViewCapturePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
+
+  async function copyEmbedCode() {
+    const embedCode = `<iframe src="${window.location.origin}/view/${id}" width="100%" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
+    try {
+      await navigator.clipboard.writeText(embedCode);
+    } catch {
+      window.prompt("Copy embed code:", embedCode);
+    }
+    setEmbedCopied(true);
+    setTimeout(() => setEmbedCopied(false), 1500);
+  }
 
   useEffect(() => {
     let cancelled = false;
