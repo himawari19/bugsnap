@@ -31,16 +31,37 @@ interface Capture {
 }
 
 function GoogleDriveViewer({ url, type }: { url: string; type: string }) {
+  let embedVideoUrl = url;
+  if (type === "video") {
+    // Extract Google Drive File ID if present
+    const match = url.match(//d/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      embedVideoUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-4 w-full">
       {type === "video" ? (
-        <video
-          src={url}
-          controls
-          playsInline
-          preload="metadata"
-          className="w-full max-w-3xl rounded-lg border border-border bg-black"
-        />
+        <div className="w-full flex flex-col items-center gap-3">
+          <video
+            id="main-video-player"
+            src={embedVideoUrl}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full max-w-3xl rounded-lg border border-border bg-black shadow-sm"
+          />
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted hover:text-foreground flex items-center gap-1 mt-1"
+          >
+            Open in Google Drive
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+          </a>
+        </div>
       ) : (
         <div className="w-full max-w-3xl rounded-lg border border-border bg-subtle/40 p-8 flex flex-col items-center gap-4">
           <svg className="w-14 h-14 text-indigo-600/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -69,6 +90,18 @@ function GoogleDriveViewer({ url, type }: { url: string; type: string }) {
 function DevToolsPanel({ logs }: { logs: DevLog[] }) {
   const [activeTab, setActiveTab] = useState<"info" | "console" | "network" | "actions">("info");
   const [copied, setCopied] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
+
+  async function copyEmbedCode() {
+    const embedCode = `<iframe src="${window.location.origin}/view/${id}" width="100%" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
+    try {
+      await navigator.clipboard.writeText(embedCode);
+    } catch {
+      window.prompt("Copy embed code:", embedCode);
+    }
+    setEmbedCopied(true);
+    setTimeout(() => setEmbedCopied(false), 1500);
+  }
 
   const sortedLogs = [...logs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
   const consoleLogs = logs.filter((l) => l.type === "console");
@@ -343,16 +376,28 @@ export default function ViewCapturePage() {
             </svg>
             <span className="text-lg font-bold tracking-tight">Mazway</span>
           </Link>
-          <button
-            onClick={copyLink}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3.5 py-1.5 text-sm font-medium text-foreground hover:bg-subtle transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-            </svg>
-            {copied ? "Copied!" : "Copy Link"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyLink}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3.5 py-1.5 text-sm font-medium text-foreground hover:bg-subtle transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+              </svg>
+              {copied ? "Copied!" : "Copy Link"}
+            </button>
+            <button
+              onClick={copyEmbedCode}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3.5 py-1.5 text-sm font-medium text-foreground hover:bg-subtle transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              {embedCopied ? "Embed Copied!" : "Copy Embed"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -405,11 +450,35 @@ export default function ViewCapturePage() {
 
             {/* Main split */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 flex-1">
-              <div className="rounded-xl border border-border bg-subtle/30 p-6 flex items-center justify-center min-h-[320px]">
+              <div className="rounded-xl border border-border bg-subtle/30 p-6 flex items-center justify-center min-h-[320px] sticky top-24 self-start">
                 <GoogleDriveViewer url={capture.drive_url} type={capture.type} />
               </div>
-              <div className="rounded-xl border border-border overflow-hidden h-[520px] lg:h-auto lg:max-h-[640px]">
-                <DevToolsPanel logs={capture.dev_logs || []} />
+              
+              <div className="flex flex-col gap-5">
+                <div className="rounded-xl border border-border overflow-hidden h-[520px]">
+                  <DevToolsPanel logs={capture.dev_logs || []} />
+                </div>
+                
+                <div className="rounded-xl border border-border bg-white p-5">
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Comments</h3>
+                  <div className="text-xs text-muted py-8 text-center bg-subtle rounded-lg border border-dashed border-border mb-4">
+                    Comments database not yet linked to UI state.
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <textarea 
+                      placeholder="Write a comment..." 
+                      className="w-full text-sm rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 min-h-[80px]"
+                    />
+                    <div className="flex items-center justify-between">
+                      <button className="text-xs font-medium text-muted hover:text-foreground">
+                        @ Timestamp
+                      </button>
+                      <button className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                        Post Comment
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </>
