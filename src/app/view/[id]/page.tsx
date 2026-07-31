@@ -28,6 +28,9 @@ interface Capture {
   created_at: string;
   window_size?: string;
   dev_logs: DevLog[] | null;
+  description?: string | null;
+  password?: string | null;
+  expires_at?: string | null;
 }
 
 function GoogleDriveViewer({ url, type }: { url: string; type: string }) {
@@ -300,6 +303,11 @@ export default function ViewCapturePage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
+  const [expired, setExpired] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
 
   async function copyEmbedCode() {
     const embedCode = `<iframe src="${window.location.origin}/view/${id}" width="100%" height="480" style="border:0;border-radius:12px" allowfullscreen></iframe>`;
@@ -332,7 +340,16 @@ export default function ViewCapturePage() {
         return;
       }
       if (!cancelled) {
-        setCapture(data as Capture | null);
+        const cap = data as Capture | null;
+        setCapture(cap);
+        // Check expiry / password protection once the record is loaded.
+        if (cap) {
+          if (cap.expires_at && new Date(cap.expires_at).getTime() < Date.now()) {
+            setExpired(true);
+          } else if (cap.password) {
+            setLocked(true);
+          }
+        }
         setLoading(false);
       }
     }
@@ -352,6 +369,15 @@ export default function ViewCapturePage() {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  function handleUnlock() {
+    if (capture?.password && passwordInput === capture.password) {
+      setUnlocked(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+    }
   }
 
   return (
@@ -414,6 +440,56 @@ export default function ViewCapturePage() {
               The link you opened doesn&apos;t match any capture in this workspace.
             </p>
           </div>
+        ) : expired ? (
+          <div className="py-24 text-center">
+            <svg className="w-12 h-12 mx-auto text-muted/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h1 className="text-lg font-semibold text-foreground">Link Expired</h1>
+            <p className="text-sm text-muted mt-1 max-w-sm mx-auto">
+              This capture link expired on {new Date(capture.expires_at as string).toLocaleDateString()}. Ask the owner to share an updated link.
+            </p>
+          </div>
+        ) : locked && !unlocked ? (
+          <div className="py-24 max-w-sm mx-auto w-full text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+            </div>
+            <h1 className="text-lg font-semibold text-foreground">This capture is password protected</h1>
+            <p className="text-sm text-muted mt-1 mb-6">
+              Enter the password to view this capture.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleUnlock();
+              }}
+              className="flex flex-col gap-3"
+            >
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setPasswordError(false);
+                }}
+                placeholder="Password"
+                autoFocus
+                className={`w-full text-sm rounded-lg border px-3 py-2.5 outline-none bg-white ${
+                  passwordError ? "border-red-400" : "border-border focus:border-indigo-500"
+                }`}
+              />
+              {passwordError && (
+                <p className="text-xs text-red-600 text-left">Incorrect password. Try again.</p>
+              )}
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              >
+                Unlock Capture
+              </button>
+            </form>
+          </div>
         ) : (
           <>
             {/* Identity / metadata header */}
@@ -436,6 +512,9 @@ export default function ViewCapturePage() {
                     {capture.type === "video" ? "Screen recording" : "Screenshot"}
                     {capture.window_size ? ` · ${capture.window_size}` : ""}
                   </p>
+                  {capture.description && (
+                    <p className="text-xs text-muted mt-1">{capture.description}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted sm:ml-auto">
