@@ -4,32 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-const features = [
-  {
-    icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z",
-    title: "Instant screen capture",
-    description:
-      "Click one button to record your screen or snap a screenshot, annotate it, and generate a shareable link in seconds.",
-  },
-  {
-    icon: "M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z",
-    title: "DevTools logs included",
-    description:
-      "Console errors, failed network requests, and user actions are captured automatically and attached to every report.",
-  },
-  {
-    icon: "M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 4v8h16V8H4zm3 2h6v2H7v-2zm9 0h1v1h-1v-1zm-9 3h10v2H7v-2z",
-    title: "Auto-organize",
-    description:
-      "Every capture is saved to your Google Drive automatically, so your recordings stay organized and never get lost.",
-  },
-  {
-    icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
-    title: "Free forever with Google Drive",
-    description:
-      "No credit card, no storage limits. Reports live in your own Drive account and are free for as long as you use them.",
-  },
-];
+
 
 export default function Home() {
   const [signingIn, setSigningIn] = useState(false);
@@ -146,28 +121,113 @@ export default function Home() {
           </p>
         </section>
 
-        {/* Features */}
-        <section className="border-t border-border bg-subtle/40">
-          <div className="mx-auto max-w-6xl px-6 py-16">
-            <h2 className="text-center text-2xl sm:text-3xl font-bold tracking-tight">
-              Everything your team needs to squash bugs
-            </h2>
-            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {features.map((f) => (
-                <div
-                  key={f.title}
-                  className="rounded-xl border border-border bg-white p-6 flex flex-col"
-                >
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-subtle text-indigo-600">
-                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d={f.icon} />
-                    </svg>
+        {/* Product Screenshots */}
+        <section className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20 space-y-24">
+
+            {/* 1. Capture */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">Capture anything in one click</h3>
+                <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
+                  Record your screen or snap a screenshot, annotate it with arrows,
+                  highlights and text, then share a link instantly. No uploads, no friction.
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/50">
+                  <span className="text-xs font-medium text-muted">mazwayScreen — Editor</span>
+                  <div className="flex gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                   </div>
-                  <h3 className="text-sm font-semibold text-foreground">{f.title}</h3>
-                  <p className="mt-1.5 text-xs text-muted leading-relaxed">{f.description}</p>
                 </div>
-              ))}
+                <div className="p-4 flex gap-4">
+                  <div className="flex-1 rounded-lg bg-subtle/60 border border-border aspect-video flex items-center justify-center relative">
+                    <div className="absolute inset-6 rounded-md border-2 border-dashed border-indigo-300 bg-indigo-50/40" />
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                      <svg viewBox="0 0 24 24" className="w-10 h-10 text-indigo-500/70" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      <span className="mt-1 text-[10px] text-muted">1920x1080</span>
+                    </div>
+                  </div>
+                  <div className="w-40 hidden sm:flex flex-col gap-2">
+                    <div className="h-3 rounded bg-subtle w-3/4" />
+                    <div className="h-2 rounded bg-subtle w-full" />
+                    <div className="mt-2 h-8 rounded-md bg-indigo-600" />
+                    <div className="h-8 rounded-md border border-border" />
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* 2. DevTools */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div className="order-2 lg:order-1">
+                <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-4 border-b border-border px-4 py-2.5 bg-subtle/50 text-xs font-medium text-muted">
+                    <span className="text-indigo-600 font-semibold border-b-2 border-indigo-600 pb-0.5">Info</span>
+                    <span>Console <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-amber-400" /></span>
+                    <span>Network <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-red-400" /></span>
+                    <span>Actions</span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex text-xs"><span className="w-24 text-muted">Timestamp</span><span className="text-foreground font-medium">July 31, 2026 at 3:15 PM</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">OS</span><span className="text-foreground font-medium">Windows</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">Browser</span><span className="text-foreground font-medium">Chrome 140</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">Window size</span><span className="text-foreground font-medium">1920x1080</span></div>
+                    <div className="mt-3 rounded-md bg-red-50 border border-red-100 px-3 py-2 font-mono text-[11px] text-red-700">
+                      POST /api/v1/auth 500 · Failed to fetch
+                    </div>
+                    <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 font-mono text-[11px] text-amber-700">
+                      [Vue warn] Property &quot;user&quot; was used before being defined
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="order-1 lg:order-2">
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">DevTools context attached automatically</h3>
+                <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
+                  Console errors, failed network requests and every user action are
+                  captured and attached to the recording — no more &quot;works on my machine&quot;.
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Share & Dashboard */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">Share once, fix faster</h3>
+                <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
+                  Every capture lives in your Google Drive and appears in your personal
+                  dashboard. Copy a link, embed it in a ticket, or keep it private.
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/50">
+                  <span className="text-xs font-medium text-muted">Recordings</span>
+                  <div className="flex gap-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">All</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-600 font-medium">Videos</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">Screenshots</span>
+                  </div>
+                </div>
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {["Bug on login modal", "Checkout flow", "Design review"].map((t) => (
+                    <div key={t} className="rounded-lg border border-border overflow-hidden">
+                      <div className="aspect-video bg-subtle/70 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-indigo-500/60" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </div>
+                      <div className="px-2.5 py-2">
+                        <div className="text-[10px] font-medium text-foreground truncate">{t}</div>
+                        <div className="text-[9px] text-muted mt-0.5">Jul 31 · 1920x1080</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
 
