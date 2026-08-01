@@ -1,0 +1,288 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+
+interface Capture {
+  id: string;
+  title: string;
+  type: string;
+  drive_url: string;
+  created_at: string;
+  window_size?: string;
+  workspace_id?: string | null;
+}
+
+export default function DashboardAnalyticsPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-sm text-muted">Loading dashboard...</div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const wsParam = searchParams.get("ws");
+  const [captures, setCaptures] = useState<Capture[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<{ name: string; email: string }>({
+    name: "User",
+    email: "",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      const u = data.session?.user;
+      if (u) {
+        const meta = u.user_metadata || {};
+        setSession({
+          name: meta.full_name || meta.name || u.email?.split("@")[0] || "User",
+          email: u.email || "",
+        });
+      }
+    });
+
+    (async () => {
+      let query = supabase
+        .from("captures")
+        .select("*")
+        .order("created_at", { ascending: false });
+      // Filter server-side when a workspace is active. If the workspace_id
+      // column hasn't been added to the DB yet (deploy race), the .eq is a
+      // no-op and we fall back to the client-side filter below.
+      if (wsParam && wsParam !== "all") {
+        query = query.eq("workspace_id", wsParam);
+      }
+      const { data, error } = await query;
+      if (error) {
+        console.warn("Error fetching captures:", error);
+      } else if (!cancelled) {
+        setCaptures(data || []);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wsParam]);
+
+  // Restrict to the active workspace when a ws param is present. The
+  // undefined/null guards tolerate the workspace_id column not existing yet.
+  const wsCaptures = captures.filter(
+    (c) =>
+      !wsParam ||
+      wsParam === "all" ||
+      c.workspace_id === undefined ||
+      c.workspace_id === null ||
+      c.workspace_id === wsParam
+  );
+
+  const videos = wsCaptures.filter((c) => c.type === "video");
+  const screenshots = wsCaptures.filter((c) => c.type === "screenshot");
+
+  // This week's captures
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const thisWeek = wsCaptures.filter((c) => now - new Date(c.created_at).getTime() < weekMs);
+
+  // Recent 5
+  const recent = wsCaptures.slice(0, 5);
+
+  // Group by day for a simple bar chart (last 7 days)
+  const days: { label: string; count: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now - i * 24 * 60 * 60 * 1000);
+    const label = d.toLocaleDateString("en-GB", { weekday: "short" });
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    const count = wsCaptures.filter(
+      (c) => new Date(c.created_at).getTime() >= dayStart && new Date(c.created_at).getTime() < dayEnd
+    ).length;
+    days.push({ label, count });
+  }
+  const maxDayCount = Math.max(1, ...days.map((d) => d.count));
+
+  if (loading) {
+    return (
+      <div className="p-8 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-xl border border-border bg-white p-5 animate-pulse">
+              <div className="w-1/2 h-3 bg-subtle rounded mb-3" />
+              <div className="w-2/3 h-8 bg-subtle rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 rounded-xl border border-border bg-white p-6 animate-pulse">
+          <div className="w-1/3 h-4 bg-subtle rounded mb-6" />
+          <div className="h-40 bg-subtle rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Welcome back, {session.name.split(" ")[0]} 👋
+          </h1>
+          <p className="text-sm text-muted mt-1">Here&apos;s what&apos;s happening with your captures.</p>
+        </div>
+        <Link
+          href="/captures"
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          View All Captures
+        </Link>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {[
+          {
+            label: "Total Captures",
+            value: wsCaptures.length,
+            icon: (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            ),
+            accent: "bg-indigo-50 text-indigo-600",
+          },
+          {
+            label: "Recordings",
+            value: videos.length,
+            icon: (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            ),
+            accent: "bg-rose-50 text-rose-500",
+          },
+          {
+            label: "Screenshots",
+            value: screenshots.length,
+            icon: (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            ),
+            accent: "bg-emerald-50 text-emerald-600",
+          },
+          {
+            label: "This Week",
+            value: thisWeek.length,
+            icon: (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            ),
+            accent: "bg-amber-50 text-amber-600",
+          },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-border bg-white p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted">{stat.label}</span>
+              <span className={`w-9 h-9 rounded-lg flex items-center justify-center ${stat.accent}`}>
+                {stat.icon}
+              </span>
+            </div>
+            <p className="text-3xl font-bold tracking-tight text-foreground">{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Activity Chart */}
+        <div className="lg:col-span-3 rounded-xl border border-border bg-white p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-base font-semibold text-foreground">Weekly Activity</h2>
+            <span className="text-xs text-muted">Last 7 days</span>
+          </div>
+          <div className="flex items-end gap-3 h-40">
+            {days.map((d) => (
+              <div key={d.label} className="flex-1 flex flex-col items-center gap-2">
+                <span className="text-[11px] text-muted font-medium">{d.count || ""}</span>
+                <div
+                  className="w-full max-w-[42px] rounded-t-lg bg-indigo-100 hover:bg-indigo-500 transition-colors relative group"
+                  style={{ height: `${Math.max(4, (d.count / maxDayCount) * 120)}px` }}
+                  title={`${d.count} captures`}
+                />
+                <span className="text-[11px] text-muted">{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="lg:col-span-2 rounded-xl border border-border bg-white p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-foreground">Recent Activity</h2>
+            <Link href="/captures" className="text-xs text-indigo-600 font-medium hover:underline">
+              View all
+            </Link>
+          </div>
+          {recent.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-xs text-muted">No captures yet.</p>
+              <p className="text-[11px] text-muted mt-1">
+                Use the mazwayScreen extension to create your first capture.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recent.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/captures/${c.id}`}
+                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-subtle transition-colors"
+                >
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      c.type === "video" ? "bg-rose-50 text-rose-500" : "bg-emerald-50 text-emerald-600"
+                    }`}
+                  >
+                    {c.type === "video" ? (
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">{c.title}</p>
+                    <p className="text-[11px] text-muted">
+                      {new Date(c.created_at).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                  <svg className="w-4 h-4 text-muted shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
