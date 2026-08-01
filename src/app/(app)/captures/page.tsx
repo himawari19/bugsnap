@@ -606,26 +606,48 @@ function CapturesContent() {
           ))}
         </div>
       ) : filteredCaptures.length === 0 ? (
-        <div className="py-20 text-center rounded-xl border border-dashed border-border bg-subtle/50">
-          <svg className="w-12 h-12 mx-auto text-muted/40 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          <h3 className="text-base font-semibold text-foreground">No captures found</h3>
-          <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
-            Use the mazwayScreen browser extension to record or snap your screen. When you click &quot;Create Link&quot;, it will appear here automatically.
-          </p>
+        <div className="py-20 text-center rounded-xl border border-dashed border-border bg-subtle/50 flex flex-col items-center gap-3">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">
+              {search.trim() || showVideo || showScreenshot ? "No captures match your filters" : "Ready when you are"}
+            </h3>
+            <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
+              {search.trim() || showVideo || showScreenshot
+                ? "Try a different search or clear the type filters to see everything."
+                : "Use the mazwayScreen browser extension to record or snap your screen — your first capture will appear here instantly."}
+            </p>
+          </div>
+          {!search.trim() && !showVideo && !showScreenshot && (
+            <button
+              onClick={() => window.open("https://chrome.google.com/webstore", "_blank")}
+              className="mt-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+            >
+              Install the Extension
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredCaptures.map((item) => (
+          {filteredCaptures.map((item) => {
+            const isSelected = selectedIds.has(item.id);
+            // In select mode the card becomes a clickable div; otherwise a Link.
+            const CardWrapper = (selectMode ? "div" : Link) as React.ElementType;
+            const cardProps = selectMode
+              ? { onClick: () => toggleSelect(item.id), className: "flex flex-col flex-1 cursor-pointer group select-none" }
+              : { href: `/captures/${item.id}`, className: "flex flex-col flex-1 group" };
+            return (
             <div
               key={item.id}
-              className="relative rounded-xl border border-border bg-white hover:shadow-sm transition-shadow flex flex-col"
+              className={`relative rounded-xl border bg-white hover:shadow-sm transition-all flex flex-col ${
+                isSelected ? "border-indigo-600 ring-2 ring-indigo-600/20" : "border-border"
+              }`}
             >
-              <Link
-                href={`/captures/${item.id}`}
-                className="flex flex-col flex-1 group"
-              >
+              <CardWrapper {...cardProps}>
                 {/* Thumbnail Container */}
                 <div className="aspect-[16/10] rounded-t-xl overflow-hidden bg-subtle flex items-center justify-center text-muted text-sm relative group-hover:bg-subtle/80 transition-colors">
                   {driveThumbUrl(item.drive_url) && !thumbFailed[item.id] ? (
@@ -648,6 +670,25 @@ function CapturesContent() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       )}
+                    </div>
+                  )}
+
+                  {/* Selection checkbox (visible only in select mode) */}
+                  {selectMode && (
+                    <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
+                      <div
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                          isSelected
+                            ? "bg-indigo-600 border-indigo-600"
+                            : "bg-white/90 border-indigo-400"
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -711,25 +752,27 @@ function CapturesContent() {
                     {item.title}
                   </h3>
                   <span className="text-muted shrink-0">
-                    {new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    {timeAgo(item.created_at)}
                   </span>
                   </div>
-              </Link>
+              </CardWrapper>
 
-              {/* 3-dot menu */}
-              <div className="absolute top-2.5 right-2.5">
-                <button
-                  aria-label="Capture actions"
-                  onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}
-                  className="w-7 h-7 rounded-md bg-white/90 border border-border text-muted hover:text-foreground hover:bg-white flex items-center justify-center shadow-sm transition-colors"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="1.8" />
-                    <circle cx="12" cy="12" r="1.8" />
-                    <circle cx="12" cy="19" r="1.8" />
-                  </svg>
-                </button>
-              </div>
+              {/* 3-dot menu - hidden in select mode */}
+              {!selectMode && (
+                <div className="absolute top-2.5 right-2.5">
+                  <button
+                    aria-label="Capture actions"
+                    onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}
+                    className="w-7 h-7 rounded-md bg-white/90 border border-border text-muted hover:text-foreground hover:bg-white flex items-center justify-center shadow-sm transition-colors"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="1.8" />
+                      <circle cx="12" cy="12" r="1.8" />
+                      <circle cx="12" cy="19" r="1.8" />
+                    </svg>
+                  </button>
+                </div>
+              )}
 
               {openMenuId === item.id && (
                 <>
@@ -760,7 +803,8 @@ function CapturesContent() {
                 </>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
