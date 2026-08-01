@@ -38,6 +38,19 @@ const EXPIRY_OPTIONS: { value: "never" | "24h" | "7d"; label: string }[] = [
   { value: "7d", label: "7 Days" },
 ];
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  // Older than a week → compact date, same as before.
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 function formatDuration(sec: number | null | undefined): string {
   if (!sec || isNaN(sec)) return "0:00";
   const m = Math.floor(sec / 60);
@@ -368,6 +381,43 @@ function CapturesContent() {
     setDeleting(null);
   }
 
+  // Bulk-select mode for deleting many captures at once.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0 || bulkDeleting) return;
+    const ids = Array.from(selectedIds);
+    setBulkDeleting(true);
+    setDeleteError(null);
+    const { error } = await supabase.from("captures").delete().in("id", ids);
+    if (error) {
+      console.warn("Error bulk deleting:", error);
+      setDeleteError("Could not delete some captures. Please try again.");
+      setBulkDeleting(false);
+      return;
+    }
+    const removed = new Set(ids);
+    setCaptures((prev) => prev.filter((c) => !removed.has(c.id)));
+    setBulkDeleting(false);
+    exitSelectMode();
+  }
+
   const filteredCaptures = workspaceCaptures.filter((item) => {
     // No type selected => treat as "All" (don't filter by type).
     const matchesType =
@@ -391,22 +441,70 @@ function CapturesContent() {
         <div className="flex items-center gap-4">
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            <input 
-              type="text" 
-              placeholder="Search captures..." 
+            <input
+              type="text"
+              placeholder="Search captures..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 pr-4 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 w-64"
             />
           </div>
-          <Link
-            href="/"
-            title="Open the mazwayScreen extension to start a capture"
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-400 text-white text-sm font-medium rounded-lg hover:bg-emerald-500 transition-colors"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-            New Capture
-          </Link>
+          {!selectMode ? (
+            <>
+              <button
+                onClick={() => setSelectMode(true)}
+                disabled={filteredCaptures.length === 0}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white text-sm font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors disabled:opacity-40"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                Select
+              </button>
+              <Link
+                href="/"
+                title="Open the mazwayScreen extension to start a capture"
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-400 text-white text-sm font-medium rounded-lg hover:bg-emerald-500 transition-colors"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                New Capture
+              </Link>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted mr-1">
+                {selectedIds.size} selected
+              </span>
+              <button
+                onClick={() =>
+                  setSelectedIds(
+                    (prev) =>
+                      new Set(
+                        prev.size === filteredCaptures.length
+                          ? []
+                          : filteredCaptures.map((c) => c.id)
+                      )
+                  )
+                }
+                className="px-3 py-2 rounded-lg border border-border bg-white text-xs font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors"
+              >
+                {selectedIds.size === filteredCaptures.length && selectedIds.size > 0
+                  ? "Deselect all"
+                  : "Select all"}
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={selectedIds.size === 0 || bulkDeleting}
+                className="px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors"
+              >
+                {bulkDeleting ? "Deleting…" : `Delete ${selectedIds.size || ""}`}
+              </button>
+              <button
+                onClick={exitSelectMode}
+                className="px-3 py-2 rounded-lg border border-border bg-white text-xs font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

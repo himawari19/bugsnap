@@ -73,7 +73,10 @@ export default function CaptureDetailPage() {
 
   function handleCopyLink() {
     if (!capture) return;
-    navigator.clipboard.writeText(capture.drive_url || window.location.href);
+    // Share the public mazway page (which enforces password/expiry and
+    // counts views), not the raw Google Drive URL.
+    const shareUrl = `${window.location.origin}/c/${capture.id}`;
+    navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -118,7 +121,7 @@ export default function CaptureDetailPage() {
       </header>
 
       {/* Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left */}
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
           {/* Canvas */}

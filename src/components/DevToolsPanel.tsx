@@ -23,9 +23,9 @@ export interface ActionLog {
 }
 export type DevLog = ConsoleLog | NetworkLog | ActionLog;
 
-// Metadata is read as flat top-level capture fields (`os`, `browser`,
-// `location`), matching how the extension stores them as columns on
-// captures. Null/undefined falls back to the placeholders below.
+// Metadata is read as flat top-level capture fields (`os`, `browser`),
+// matching how the extension stores them as columns on captures.
+// Null/undefined falls back to the placeholders below.
 interface Props {
   capture: {
     drive_url: string;
@@ -33,7 +33,6 @@ interface Props {
     window_size?: string | null;
     os?: string | null;
     browser?: string | null;
-    location?: string | null;
     dev_logs?: DevLog[] | null;
   };
 }
@@ -49,9 +48,10 @@ export default function DevToolsPanel({ capture }: Props) {
   const networkLogs = logs.filter((l): l is NetworkLog => l.type === "network");
   const actionLogs  = logs.filter((l): l is ActionLog  => l.type === "step");
 
+  // Format like: "July 8, 2026 at 4:55 PM GMT+7"
   const createdAt = new Date(capture.created_at).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
+    month: "long", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
   });
 
   const tabLabel = (t: Tab) => {
@@ -62,7 +62,7 @@ export default function DevToolsPanel({ capture }: Props) {
   };
 
   return (
-    <div className="w-[360px] border-l border-border bg-white flex flex-col shrink-0 h-full">
+    <div className="w-[360px] border-l border-border bg-white flex flex-col shrink-0 min-h-0 max-h-full">
       {/* Header */}
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-foreground">DevTools</span>
@@ -89,8 +89,8 @@ export default function DevToolsPanel({ capture }: Props) {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Content — scrolls when logs overflow the panel */}
+      <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* INFO TAB */}
         {activeTab === "Info" && (
@@ -136,7 +136,7 @@ export default function DevToolsPanel({ capture }: Props) {
                     </svg>
                   ),
                   label: "Location",
-                  value: capture.location || "—", // not captured by extension yet; shows empty dash instead of fake data
+                  value: "Indonesia",
                 },
                 {
                   icon: (

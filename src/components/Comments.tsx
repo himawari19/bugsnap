@@ -179,18 +179,36 @@ export default function Comments({
     setSubmitting(true);
 
     try {
-      const { data, error } = await supabase
-        .from("comments")
-        .insert({ capture_id: captureId, author_name, author_email, body: text, video_timestamp })
-        .select()
-        .single();
+      // Use the rate-limited RPC so anonymous users can't spam comments.
+      const visitorRef = (() => {
+        try {
+          let ref = localStorage.getItem("mazway_visitor");
+          if (!ref) {
+            ref = Math.random().toString(36).slice(2, 10);
+            localStorage.setItem("mazway_visitor", ref);
+          }
+          return ref;
+        } catch {
+          return "";
+        }
+      })();
+      const { data, error } = await supabase.rpc("post_comment", {
+        p_capture_id: captureId,
+        p_visitor_ref: visitorRef,
+        p_body: text,
+        p_author_name: author_name,
+        p_author_email: author_email,
+      });
       if (error) throw error;
       setComments((prev) =>
         prev.map((c) => (c.id === optimisticId ? (data as CommentRow) : c))
       );
-    } catch {
+    } catch (err) {
       setComments((prev) => prev.filter((c) => c.id !== optimisticId));
-      setError("Couldn't post the comment. Please try again.");
+      setError(
+        (err as { message?: string })?.message ||
+          "Couldn't post the comment. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -203,18 +221,27 @@ export default function Comments({
     const author_email = authorEmail || null;
     setReplying(true);
     try {
-      const { data, error } = await supabase
-        .from("comments")
-        .insert({
-          capture_id: captureId,
-          author_name,
-          author_email,
-          body: text,
-          video_timestamp: null,
-          parent_id: parentId,
-        })
-        .select()
-        .single();
+      // Replies also go through the rate-limited RPC.
+      const visitorRef = (() => {
+        try {
+          let ref = localStorage.getItem("mazway_visitor");
+          if (!ref) {
+            ref = Math.random().toString(36).slice(2, 10);
+            localStorage.setItem("mazway_visitor", ref);
+          }
+          return ref;
+        } catch {
+          return "";
+        }
+      })();
+      const { data, error } = await supabase.rpc("post_comment", {
+        p_capture_id: captureId,
+        p_visitor_ref: visitorRef,
+        p_body: text,
+        p_author_name: author_name,
+        p_author_email: author_email,
+        p_parent_id: parentId,
+      });
       if (error) throw error;
       setComments((prev) => [...prev, data as CommentRow]);
       setReplyBody("");
@@ -228,8 +255,8 @@ export default function Comments({
 
   return (
     <div className="space-y-3">
-      {/* Composer */}
-      <div className="space-y-2">
+      {/* Composer (always visible) */}
+      <div className="space-y-2 shrink-0">
         {isVideo && (
           <div className="flex items-center gap-2">
             <input
@@ -273,35 +300,33 @@ export default function Comments({
               handleSubmit();
             }
           }}
-          placeholder="Write a comment or @ to mention…"
+          placeholder="Write a comment…"
           rows={2}
           className="w-full text-xs rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-subtle/50 resize-none placeholder:text-muted/70"
         />
         <div className="flex items-center justify-between gap-2">
-          {error ? (
+          {error && (
             <span className="text-[11px] text-red-600">{error}</span>
-          ) : (
-            <span className="text-[10px] text-muted">
-              Enter posts · Shift+Enter for a new line
-            </span>
           )}
           <button
             type="button"
             onClick={handleSubmit}
             disabled={submitting || !body.trim()}
-            className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ml-auto"
           >
             {submitting ? "Posting…" : "Post"}
           </button>
         </div>
       </div>
 
-      {/* List */}
-      {loading ? (
-        <p className="text-xs text-muted py-2">Loading comments…</p>
-      ) : comments.length === 0 ? (
-        <p className="text-xs text-muted py-2">No comments yet. Start the conversation.</p>
-      ) : (
+      {/* List — scrolls internally so long threads never push the page
+          beyond the DevTools panel height */}
+      <div className="max-h-[320px] overflow-y-auto pr-1 -mr-1">
+        {loading ? (
+          <p className="text-xs text-muted py-2">Loading comments…</p>
+        ) : comments.length === 0 ? (
+          <p className="text-xs text-muted py-2">No comments yet.</p>
+        ) : (
         <ul className="space-y-3">
           {comments
             .filter((c) => !c.parent_id) // top-level threads only
@@ -408,7 +433,8 @@ export default function Comments({
               );
             })}
         </ul>
-      )}
+        )}
+      </div>
     </div>
   );
 }

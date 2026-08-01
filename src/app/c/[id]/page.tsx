@@ -19,7 +19,7 @@ interface Capture {
   dev_logs?: DevLog[] | null;
   os?: string | null;
   browser?: string | null;
-  location?: string | null;
+  site_url?: string | null;
   status: "ok" | "expired" | "needs_password" | "not_found";
 }
 
@@ -40,8 +40,9 @@ function driveThumbUrl(driveUrl: string): string | null {
 
 interface CommentItem {
   id: string;
-  user_name: string;
-  content: string;
+  author_name: string | null;
+  author_email: string | null;
+  body: string;
   created_at: string;
 }
 
@@ -62,6 +63,7 @@ export default function PublicSharePage() {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [newComment, setNewComment] = useState("");
   const [posting, setPosting] = useState(false);
+  const [postingError, setPostingError] = useState<string | null>(null);
 
   // Embed Modal
   const [embedModal, setEmbedModal] = useState(false);
@@ -92,15 +94,6 @@ export default function PublicSharePage() {
 
     let cancelled = false;
     if (!id) { setStatus("notfound"); return; }
-
-    // Record a view when the capture is opened (only once per session/visit).
-    // viewer_ref = short hash so repeated reloads from the same session don't
-    // inflate counts, while still letting each unique visit count.
-    try {
-      const ref = localStorage.getItem("mazway_visitor") || Math.random().toString(36).slice(2, 10);
-      localStorage.setItem("mazway_visitor", ref);
-      supabase.rpc("record_view", { p_capture_id: id, p_ref: ref });
-    } catch {}
 
     // First call: no password. The RPC leaks nothing — password and
     // expires_at never cross the network, and drive_url/dev_logs are
@@ -178,15 +171,32 @@ export default function PublicSharePage() {
   async function handleAddComment() {
     if (!newComment.trim() || !capture) return;
     setPosting(true);
-    const payload = {
-      capture_id: capture.id,
-      user_name: "Visitor",
-      content: newComment.trim(),
-    };
-    const { data, error } = await supabase.from("comments").insert([payload]).select().single();
+    // Use the rate-limited post_comment RPC (correct column names
+    // author_name/body) so public comments actually persist.
+    const visitorRef = (() => {
+      try {
+        let ref = localStorage.getItem("mazway_visitor");
+        if (!ref) {
+          ref = Math.random().toString(36).slice(2, 10);
+          localStorage.setItem("mazway_visitor", ref);
+        }
+        return ref;
+      } catch {
+        return "";
+      }
+    })();
+    const { data, error } = await supabase.rpc("post_comment", {
+      p_capture_id: capture.id,
+      p_visitor_ref: visitorRef,
+      p_body: newComment.trim(),
+      p_author_name: "Visitor",
+      p_author_email: null,
+    });
     if (!error && data) {
       setComments((prev) => [...prev, data as CommentItem]);
       setNewComment("");
+    } else {
+      setPostingError((error as { message?: string })?.message || "Couldn't post the comment.");
     }
     setPosting(false);
   }
@@ -350,7 +360,7 @@ export default function PublicSharePage() {
       )}
 
       {status === "ready" && capture && (
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
             <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[380px] flex items-center justify-center">
               {capture.type === "video" && previewUrl ? (
@@ -386,29 +396,35 @@ export default function PublicSharePage() {
               {comments.length > 0 && (
                 <div className="space-y-3 pt-3 border-t border-border/60">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Comments ({comments.length})</p>
-                  {comments.map((c) => (
-                    <div key={c.id} className="flex gap-3 text-xs bg-subtle/50 p-3 rounded-lg border border-border/50">
-                      <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                        {c.user_name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="font-semibold text-foreground">{c.user_name}</span>
-                          <span className="text-[10px] text-muted">{new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  {comments.map((c) => {
+                    const name = c.author_name || "Guest";
+                    return (
+                      <div key={c.id} className="flex gap-3 text-xs bg-subtle/50 p-3 rounded-lg border border-border/50">
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                          {name.charAt(0).toUpperCase()}
                         </div>
-                        <p className="text-foreground leading-relaxed break-words">{c.content}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-semibold text-foreground">{name}</span>
+                            <span className="text-[10px] text-muted">{new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="text-foreground leading-relaxed break-words">{c.body}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {/* Add Comment Input */}
+              {postingError && (
+                <p className="text-[11px] text-red-600">{postingError}</p>
+              )}
               <div className="flex items-center gap-2 pt-2">
                 <input
                   type="text"
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
+                  onChange={(e) => { setNewComment(e.target.value); setPostingError(null); }}
                   placeholder="Write a comment..."
                   onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
                   className="flex-1 text-xs rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-subtle/50"
@@ -433,37 +449,43 @@ export default function PublicSharePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEmbedModal(false)} />
           <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border">
-            <h3 className="text-base font-bold text-foreground mb-1">Embed Capture</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-bold text-foreground">Embed Capture</h3>
+              <button onClick={() => setEmbedModal(false)} className="text-muted hover:text-foreground" aria-label="Close">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
             <p className="text-xs text-muted mb-4">Paste this code into Notion, WordPress, or your custom app.</p>
+
+            {/* QR code centered */}
+            <div className="flex flex-col items-center gap-1.5 mb-5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(window.location.href)}`}
+                alt="QR code"
+                className="w-32 h-32 rounded-xl border border-border shadow-sm"
+              />
+              <span className="text-[11px] text-muted">Scan to open this capture on your phone</span>
+            </div>
+
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">Embed Code</label>
             <textarea
               readOnly
               value={embedCode}
               className="w-full h-24 text-xs font-mono p-3 bg-subtle border border-border rounded-lg outline-none resize-none"
             />
-            <div className="flex items-center justify-between mt-4 gap-4">
-              {/* QR Code (no dependency — rendered via qrserver API) */}
-              <div className="flex flex-col items-center gap-1 shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(window.location.href)}`}
-                  alt="QR code"
-                  className="w-24 h-24 rounded-lg border border-border"
-                />
-                <span className="text-[10px] text-muted">Scan to open</span>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setEmbedModal(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">Close</button>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(embedCode);
-                    setEmbedCopied(true);
-                    setTimeout(() => setEmbedCopied(false), 2000);
-                  }}
-                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                >
-                  {embedCopied ? "Copied!" : "Copy Code"}
-                </button>
-              </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setEmbedModal(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">Close</button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(embedCode);
+                  setEmbedCopied(true);
+                  setTimeout(() => setEmbedCopied(false), 2000);
+                }}
+                className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                {embedCopied ? "Copied!" : "Copy Code"}
+              </button>
             </div>
           </div>
         </div>
