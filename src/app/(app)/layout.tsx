@@ -46,6 +46,16 @@ export default function DashboardLayout({
   const [newFolderName, setNewFolderName] = useState("");
   const [createFolderError, setCreateFolderError] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
+  
+  // Custom Rename & Delete Folder Modal states
+  const [renameFolderModalOpen, setRenameFolderModalOpen] = useState(false);
+  const [folderToRename, setFolderToRename] = useState<string | null>(null);
+  const [renameFolderNameInput, setRenameFolderNameInput] = useState("");
+  
+  const [deleteFolderModalOpen, setDeleteFolderModalOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+
   const [session, setSession] = useState<{
     loading: boolean;
     user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
@@ -297,74 +307,87 @@ export default function DashboardLayout({
     }
   };
 
-  const handleRenameFolder = async (currentName: string) => {
-    if (!activeWsId) return;
-    const newName = window.prompt("Rename folder to:", currentName);
-    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+  const handleRenameFolder = (currentName: string) => {
+    setFolderToRename(currentName);
+    setRenameFolderNameInput(currentName);
+    setRenameFolderModalOpen(true);
+  };
+
+  const submitRenameFolder = async () => {
+    if (!activeWsId || !folderToRename) return;
+    const newName = renameFolderNameInput.trim();
+    if (!newName || newName === folderToRename) {
+      setRenameFolderModalOpen(false);
+      return;
+    }
 
     try {
       // 1. Update folder name in workspace_folders table
       const { error: folderErr } = await supabase
         .from("workspace_folders")
-        .update({ name: newName.trim() })
+        .update({ name: newName })
         .eq("workspace_id", activeWsId)
-        .eq("name", currentName);
+        .eq("name", folderToRename);
       if (folderErr) throw folderErr;
 
       // 2. Update captures table records matching this folder
       const { error: capErr } = await supabase
         .from("captures")
-        .update({ folder_name: newName.trim() })
+        .update({ folder_name: newName })
         .eq("workspace_id", activeWsId)
-        .eq("folder_name", currentName);
+        .eq("folder_name", folderToRename);
       if (capErr) throw capErr;
 
       // 3. Update local state
       setFolders((prev) =>
-        prev.map((f) => (f === currentName ? newName.trim() : f)).sort()
+        prev.map((f) => (f === folderToRename ? newName : f)).sort()
       );
       
       // Redirect if current folder was active
       const url = new URL(window.location.href);
-      if (url.searchParams.get("folder") === currentName) {
-        router.replace(`/captures?ws=${activeWsId}&folder=${encodeURIComponent(newName.trim())}`, { scroll: false });
+      if (url.searchParams.get("folder") === folderToRename) {
+        router.replace(`/captures?ws=${activeWsId}&folder=${encodeURIComponent(newName)}`, { scroll: false });
       }
+      setRenameFolderModalOpen(false);
     } catch (err) {
       console.warn("Failed to rename folder:", err);
       alert("Could not rename folder. Check connection.");
     }
   };
 
-  const handleDeleteFolder = async (folderName: string) => {
-    if (!activeWsId) return;
-    
-    // Popup confirmation warning all captures + files inside will be deleted
-    const confirm = window.confirm(
-      `Are you sure you want to delete "${folderName}"?\n\nWARNING: All captures inside this folder will be permanently deleted from this dashboard and Google Drive.`
-    );
-    if (!confirm) return;
+  const handleDeleteFolder = (folderName: string) => {
+    setFolderToDelete(folderName);
+    setDeleteFolderModalOpen(true);
+  };
+
+  const submitDeleteFolder = async () => {
+    if (!activeWsId || !folderToDelete || deletingFolder) return;
+    setDeletingFolder(true);
 
     try {
       // Call postgres RPC to drop folder + captures, and add to deleted_drive_folders queue
       const { error } = await supabase.rpc("delete_workspace_folder", {
         p_workspace_id: activeWsId,
-        p_folder_name: folderName,
+        p_folder_name: folderToDelete,
       });
       if (error) throw error;
 
       // Update local state
-      setFolders((prev) => prev.filter((f) => f !== folderName));
+      setFolders((prev) => prev.filter((f) => f !== folderToDelete));
       
       // Redirect to main captures if current folder was active
       const url = new URL(window.location.href);
-      if (url.searchParams.get("folder") === folderName) {
+      if (url.searchParams.get("folder") === folderToDelete) {
         router.replace(`/captures?ws=${activeWsId}`, { scroll: false });
       }
-
-      alert(`Folder "${folderName}" has been queued for deletion on Google Drive.`);
+      
+      setDeleteFolderModalOpen(false);
+      alert(`Folder "${folderToDelete}" queued for deletion on Google Drive.`);
     } catch (err) {
       console.warn("Failed to delete folder:", err);
       alert("Could not delete folder. Please try again.");
+    } finally {
+      setDeletingFolder(false);
     }
   };
 
@@ -1046,6 +1069,85 @@ export default function DashboardLayout({
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {creatingFolder ? "Creating..." : "Create Folder"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Folder Modal */}
+      {renameFolderModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setRenameFolderModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
+            <h2 className="text-lg font-bold text-foreground mb-1">Rename Folder</h2>
+            <p className="text-sm text-muted mb-5">
+              Enter a new name for this folder. The change will sync to Google Drive.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">New Folder Name</label>
+              <input
+                type="text"
+                value={renameFolderNameInput}
+                onChange={(e) => setRenameFolderNameInput(e.target.value)}
+                placeholder="e.g. Eyden - Quaker"
+                className="w-full text-sm rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-white"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && renameFolderNameInput.trim()) {
+                    submitRenameFolder();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => setRenameFolderModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitRenameFolder}
+                disabled={!renameFolderNameInput.trim() || renameFolderNameInput.trim() === folderToRename}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Folder Modal (Jira Style Popup Confirmation) */}
+      {deleteFolderModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteFolderModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6 text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Delete Folder?</h2>
+            <p className="text-xs text-muted leading-relaxed mb-6">
+              Are you sure you want to delete <span className="font-semibold text-foreground">"{folderToDelete}"</span>?<br/>
+              <span className="text-red-600 font-medium">WARNING:</span> All captures inside this folder will be permanently deleted from this dashboard and Google Drive.
+            </p>
+            
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <button
+                onClick={() => setDeleteFolderModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitDeleteFolder}
+                disabled={deletingFolder}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deletingFolder ? "Deleting..." : "Delete Folder"}
               </button>
             </div>
           </div>

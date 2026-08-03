@@ -36,6 +36,7 @@ export default function CaptureDetailPage() {
   const [author, setAuthor] = useState<{ name?: string; email?: string }>({});
   const [qrOpen, setQrOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   
   // AI Bug Report Modal states
   const [aiModal, setAiModal] = useState(false);
@@ -329,21 +330,33 @@ export default function CaptureDetailPage() {
           <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[380px] flex items-center justify-center">
             {capture.type === "video" ? (
               <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
-                <video
-                  controls
-                  className="w-full h-full object-contain outline-none"
-                  preload="metadata"
-                >
-                  <source
-                    src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
-                    type="video/webm"
+                {!videoError ? (
+                  <video
+                    controls
+                    onError={() => setVideoError(true)}
+                    className="w-full h-full object-contain outline-none"
+                    preload="metadata"
+                  >
+                    <source
+                      src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                      type="video/webm"
+                    />
+                    <source
+                      src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                      type="video/mp4"
+                    />
+                    Your browser does not support the video tag.
+                  </video>
+                ) : (
+                  // Fallback to Google Drive iframe player if direct stream is blocked by Ad-Blockers
+                  <iframe
+                    src={`https://drive.google.com/file/d/${driveFileId(capture.drive_url || "")}/preview`}
+                    className="w-full h-full border-none"
+                    allow="autoplay; fullscreen; encrypted-media"
+                    allowFullScreen
+                    title={capture.title}
                   />
-                  <source
-                    src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
-                    type="video/mp4"
-                  />
-                  Your browser does not support the video tag.
-                </video>
+                )}
               </div>
             ) : capture.type === "screenshot" && thumbUrl ? (
               <>

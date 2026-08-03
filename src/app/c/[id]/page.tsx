@@ -87,6 +87,7 @@ export default function PublicSharePage() {
   const [qrOpen, setQrOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [viewerEmail, setViewerEmail] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -552,21 +553,33 @@ export default function PublicSharePage() {
 
               {capture.type === "video" ? (
                 <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
-                  <video
-                    controls
-                    className="w-full h-full object-contain outline-none"
-                    preload="metadata"
-                  >
-                    <source
-                      src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
-                      type="video/webm"
+                  {!videoError ? (
+                    <video
+                      controls
+                      onError={() => setVideoError(true)}
+                      className="w-full h-full object-contain outline-none"
+                      preload="metadata"
+                    >
+                      <source
+                        src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                        type="video/webm"
+                      />
+                      <source
+                        src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                        type="video/mp4"
+                      />
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    // Fallback to Google Drive iframe player if direct stream is blocked by Ad-Blockers
+                    <iframe
+                      src={`https://drive.google.com/file/d/${driveFileId(capture.drive_url || "")}/preview`}
+                      className="w-full h-full border-none"
+                      allow="autoplay; fullscreen; encrypted-media"
+                      allowFullScreen
+                      title={capture.title}
                     />
-                    <source
-                      src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
-                      type="video/mp4"
-                    />
-                    Your browser does not support the video tag.
-                  </video>
+                  )}
                 </div>
               ) : capture.type === "screenshot" && thumbUrl && !thumbFailed ? (
                 // eslint-disable-next-line @next/next/no-img-element
