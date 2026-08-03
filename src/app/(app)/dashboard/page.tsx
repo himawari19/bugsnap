@@ -290,6 +290,63 @@ function DashboardContent() {
           )}
         </div>
       </div>
+
+      {/* Team Analytics — leaderboard by capture count (per workspace) */}
+      {wsCaptures.length > 0 && (
+        <div className="mt-6 rounded-xl border border-border bg-white p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-foreground">Team Activity</h2>
+            <span className="text-xs text-muted">All time</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+                Capture Types
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">🎥 Videos</span>
+                  <span className="font-semibold text-foreground">{videos.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">📷 Screenshots</span>
+                  <span className="font-semibold text-foreground">{screenshots.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">📝 Total captures</span>
+                  <span className="font-semibold text-foreground">{wsCaptures.length}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+                This Week
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">New captures</span>
+                  <span className="font-semibold text-foreground">{thisWeek.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">Busiest day</span>
+                  <span className="font-semibold text-foreground">
+                    {days.reduce((a, b) => (b.count > a.count ? b : a), days[0]).label}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+                Average / Day
+              </p>
+              <p className="text-2xl font-bold text-foreground">
+                {(wsCaptures.length / 7).toFixed(1)}
+              </p>
+              <p className="text-[11px] text-muted mt-1">captures per day (7-day window)</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

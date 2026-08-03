@@ -19,12 +19,16 @@ export default function Home() {
         options: { redirectTo },
       });
       if (error) {
-        // If Google provider is not enabled in Supabase console, fallback seamlessly to dashboard
-        console.warn("Google provider not enabled, routing to dashboard:", error.message);
+        console.warn("Google provider not enabled, falling back to Anonymous Sign-In:", error.message);
+        // Fallback to anonymous sign-in so devs/users can still test the dashboard 
+        // without Google OAuth configuration in Supabase.
+        const { error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) throw anonError;
         window.location.assign("/dashboard");
       }
-    } catch {
-      window.location.assign("/dashboard");
+    } catch (err) {
+      console.error("Auth fallback failed:", err);
+      setError("Authentication failed. Please verify your Supabase configuration.");
     } finally {
       setSigningIn(false);
     }

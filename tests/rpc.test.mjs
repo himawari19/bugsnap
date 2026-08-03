@@ -119,7 +119,9 @@ test("get_public_capture: password-protected capture hides content until unlock"
   assert.equal(locked.data[0].status, "needs_password");
   assert.equal(locked.data[0].drive_url, null, "must NOT leak drive_url");
   assert.equal(locked.data[0].dev_logs, null, "must NOT leak dev_logs");
-  assert.equal(locked.data[0].os, null, "must NOT leak os");
+  // SQL NULL arrives as undefined/null over PostgREST — either is fine as
+  // long as no actual value leaks.
+  assert.ok(locked.data[0].os == null, "must NOT leak os");
 
   // Wrong password -> still locked
   const wrong = await supabase.rpc("get_public_capture", { p_id: id, p_password: "wrong" });
@@ -145,7 +147,8 @@ test("get_public_capture: expired capture is hidden", async () => {
   assert.equal(data[0].status, "expired");
   assert.equal(data[0].drive_url, null, "expired must not leak content");
   assert.equal(data[0].dev_logs, null);
-  assert.equal(data[0].site_url, null);
+  // SQL NULL arrives as undefined/null — either is fine as long as nothing leaks.
+  assert.ok(data[0].site_url == null, "expired must not leak site_url");
 });
 
 // ---------------------------------------------------------------------------

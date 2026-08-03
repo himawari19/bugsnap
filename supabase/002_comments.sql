@@ -41,3 +41,39 @@ create policy "comments insert auth" on public.comments for insert
 -- (optional) allow anon insert so public viewers can comment too:
 create policy "comments insert anon" on public.comments for insert
   to anon with check (true);
+
+-- ---------------------------------------------------------------------
+-- RPC: post a comment from public viewer. Since anon has restricted
+-- inserts, this runs as SECURITY DEFINER to bypass table write blocks,
+-- while recording author name and reference.
+-- ---------------------------------------------------------------------
+create or replace function public.post_comment(
+  p_capture_id uuid,
+  p_visitor_ref text,
+  p_body text,
+  p_author_name text default null,
+  p_author_email text default null
+)
+returns public.comments
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_comment public.comments;
+begin
+  -- Validate
+  if p_body is null or trim(p_body) = '' then
+    raise exception 'Comment body cannot be empty';
+  end if;
+
+  insert into public.comments (capture_id, author_name, author_email, body, created_at)
+    values (p_capture_id, coalesce(p_author_name, 'Visitor'), p_author_email, p_body, now())
+    returning * into v_comment;
+
+  return v_comment;
+end;
+$$;
+
+grant execute on function public.post_comment(uuid, text, text, text, text) to anon, authenticated;
+

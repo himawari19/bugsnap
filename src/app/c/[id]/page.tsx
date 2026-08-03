@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import DevToolsPanel, { DevLog } from "@/components/DevToolsPanel";
+import QrCode from "@/components/QrCode";
+import Comments from "@/components/Comments";
 
 // NOTE: `password` and `expires_at` are intentionally absent from this
 // public payload — the server-side RPC `get_public_capture` decides
@@ -20,7 +22,31 @@ interface Capture {
   os?: string | null;
   browser?: string | null;
   site_url?: string | null;
-  status: "ok" | "expired" | "needs_password" | "not_found";
+  allowed_domains?: string[] | null;
+  allowed_ips?: string[] | null;
+  workspace_id?: string | null;
+  expires_at?: string | null;
+  status: "ok" | "expired" | "needs_password" | "not_found" | "unauthorized_ip" | "needs_login" | "unauthorized_domain";
+}
+
+interface WorkspaceMember {
+  user_id: string;
+}
+
+function getExpiryCountdown(expiresAt: string): string {
+  const diffMs = new Date(expiresAt).getTime() - Date.now();
+  if (diffMs <= 0) return "Expired";
+  const hours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (hours < 24) {
+    if (hours < 1) {
+      const mins = Math.max(1, Math.floor(diffMs / 60000));
+      return `Expires in ${mins} minute${mins === 1 ? "" : "s"}`;
+    }
+    if (hours < 2) return "Expires in under 1 hour";
+    return `Expires in ${hours} hours`;
+  }
+  const days = Math.ceil(hours / 24);
+  return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
 function driveFileId(driveUrl: string): string | null {
@@ -38,32 +64,18 @@ function driveThumbUrl(driveUrl: string): string | null {
   return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null;
 }
 
-interface CommentItem {
-  id: string;
-  author_name: string | null;
-  author_email: string | null;
-  body: string;
-  created_at: string;
-}
-
 export default function PublicSharePage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
   const [capture, setCapture] = useState<Capture | null>(null);
-  const [status, setStatus] = useState<"loading" | "locked" | "expired" | "notfound" | "ready">("loading");
+  const [status, setStatus] = useState<"loading" | "locked" | "expired" | "notfound" | "unauthorized_ip" | "needs_login" | "unauthorized_domain" | "ready">("loading");
   const [thumbFailed, setThumbFailed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
   const [checkingPassword, setCheckingPassword] = useState(false);
   const [viewCount, setViewCount] = useState<number | null>(null);
   const recordedViewRef = useRef<string | null>(null);
-
-  // Comments
-  const [comments, setComments] = useState<CommentItem[]>([]);
-  const [newComment, setNewComment] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [postingError, setPostingError] = useState<string | null>(null);
 
   // Embed Modal
   const [embedModal, setEmbedModal] = useState(false);
@@ -77,6 +89,77 @@ export default function PublicSharePage() {
 
   // Custom Branding
   const [brand, setBrand] = useState({ name: "mazway", logo: "", hideWatermark: false });
+  const [qrOpen, setQrOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [viewerEmail, setViewerEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user?.email) {
+        setViewerEmail(data.session.user.email);
+      }
+    });
+  }, []);
+
+  // Bypass password gate for workspace members/owners: if the logged-in
+  // user is a member of this capture's workspace, force status to "ready".
+  useEffect(() => {
+    if (!id || status !== "locked") return;
+    let cancelled = false;
+    (async () => {
+      // Resolve workspace_id for this capture. Direct select is RLS-gated
+      // to workspace members, so a non-member sees no row and never unlocks.
+      const { data: me } = await supabase.auth.getSession();
+      if (cancelled || !me.session?.user) return;
+      const { data: capRows } = await supabase
+        .from("captures")
+        .select("workspace_id")
+        .eq("id", id)
+        .limit(1);
+      const wsId = capRows?.[0]?.workspace_id;
+      if (!wsId) return;
+      const { data: members } = await supabase.rpc("get_workspace_members", {
+        p_workspace_id: wsId,
+      });
+      if (cancelled) return;
+      const isMember = (members as WorkspaceMember[] | null)?.some(
+        (m) => m.user_id === me.session!.user.id
+      );
+      if (isMember) setStatus("ready");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, status]);
+
+  // Dynamic Open Graph / social meta tags for Slack/Discord previews.
+  useEffect(() => {
+    if (!capture) return;
+    const shareUrl = `${window.location.origin}/c/${id}`;
+    const metas: Record<string, string> = {
+      "og:title": `${capture.title} — Mazway`,
+      "og:description": capture.description || "Screen capture shared via Mazway",
+      "og:url": shareUrl,
+      "og:type": "website",
+      "og:site_name": "Mazway",
+      "og:image": capture.drive_url ? driveThumbUrl(capture.drive_url)! : "",
+      "twitter:card": "summary_large_image",
+      "twitter:title": `${capture.title} · Mazway`,
+      "twitter:description": capture.description || "Screen capture shared via Mazway",
+      "twitter:image": capture.drive_url ? driveThumbUrl(capture.drive_url)! : "",
+    };
+    Object.entries(metas).forEach(([prop, content]) => {
+      if (!content) return;
+      let el = document.head.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement("meta");
+        document.head.appendChild(el);
+      }
+      el.setAttribute("property", prop);
+      el.setAttribute("name", prop);
+      el.setAttribute("content", content);
+    });
+  }, [capture, id, thumbFailed]);
 
   useEffect(() => {
     // Check local storage for mocked branding settings
@@ -94,6 +177,13 @@ export default function PublicSharePage() {
 
     let cancelled = false;
     if (!id) { setStatus("notfound"); return; }
+
+    // Client-side UUID validation to prevent database casting errors (HTTP 400)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      setStatus("notfound");
+      return;
+    }
 
     // First call: no password. The RPC leaks nothing — password and
     // expires_at never cross the network, and drive_url/dev_logs are
@@ -116,20 +206,22 @@ export default function PublicSharePage() {
             setCapture(row);
             setStatus("locked");
             break;
+          case "unauthorized_ip":
+            setCapture(row);
+            setStatus("unauthorized_ip");
+            break;
+          case "needs_login":
+            setCapture(row);
+            setStatus("needs_login");
+            break;
+          case "unauthorized_domain":
+            setCapture(row);
+            setStatus("unauthorized_domain");
+            break;
           default:
             setCapture(row);
             setStatus("ready");
         }
-      });
-
-    // Fetch public comments
-    supabase
-      .from("comments")
-      .select("*")
-      .eq("capture_id", id)
-      .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        if (!cancelled && data) setComments(data as CommentItem[]);
       });
 
     // Fetch view count
@@ -167,39 +259,6 @@ export default function PublicSharePage() {
 
     return () => { cancelled = true; };
   }, [id, capture]);
-
-  async function handleAddComment() {
-    if (!newComment.trim() || !capture) return;
-    setPosting(true);
-    // Use the rate-limited post_comment RPC (correct column names
-    // author_name/body) so public comments actually persist.
-    const visitorRef = (() => {
-      try {
-        let ref = localStorage.getItem("mazway_visitor");
-        if (!ref) {
-          ref = Math.random().toString(36).slice(2, 10);
-          localStorage.setItem("mazway_visitor", ref);
-        }
-        return ref;
-      } catch {
-        return "";
-      }
-    })();
-    const { data, error } = await supabase.rpc("post_comment", {
-      p_capture_id: capture.id,
-      p_visitor_ref: visitorRef,
-      p_body: newComment.trim(),
-      p_author_name: "Visitor",
-      p_author_email: null,
-    });
-    if (!error && data) {
-      setComments((prev) => [...prev, data as CommentItem]);
-      setNewComment("");
-    } else {
-      setPostingError((error as { message?: string })?.message || "Couldn't post the comment.");
-    }
-    setPosting(false);
-  }
 
   async function handleGenerateAiReport() {
     setAiModal(true);
@@ -243,6 +302,12 @@ export default function PublicSharePage() {
           setStatus("notfound");
         } else if (row.status === "expired") {
           setStatus("expired");
+        } else if (row.status === "unauthorized_ip") {
+          setStatus("unauthorized_ip");
+        } else if (row.status === "needs_login") {
+          setStatus("needs_login");
+        } else if (row.status === "unauthorized_domain") {
+          setStatus("unauthorized_domain");
         } else {
           // needs_password again → wrong password (or still locked)
           setCapture(row);
@@ -272,19 +337,88 @@ export default function PublicSharePage() {
         </div>
         <div className="flex items-center gap-3">
           {status === "ready" && (
-            <>
-              <button
-                onClick={handleGenerateAiReport}
-                className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-sm"
-              >
-                <span>✨ AI Bug Report</span>
-              </button>
-              <button onClick={() => setEmbedModal(true)} className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-subtle transition-colors">
-                Embed
-              </button>
-            </>
+            <button
+              onClick={handleGenerateAiReport}
+              className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <span>✨ AI Bug Report</span>
+            </button>
           )}
-          <a href="/" className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-subtle transition-colors">Login</a>
+
+          {/* QR Code Popover for Mobile QA testing */}
+          {status === "ready" && (
+            <div className="relative">
+              <button
+                onClick={() => setQrOpen(!qrOpen)}
+                title="Scan QR Code to open on mobile"
+                className={`p-1.5 rounded-lg border transition-colors flex items-center justify-center ${
+                  qrOpen
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                    : "border-border text-muted hover:text-foreground hover:bg-subtle"
+                }`}
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
+                  <line x1="9" y1="15" x2="9.01" y2="15" />
+                  <line x1="15" y1="15" x2="15.01" y2="15" />
+                </svg>
+              </button>
+              {qrOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setQrOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 z-50 p-4 bg-white border border-border rounded-xl shadow-xl flex flex-col items-center gap-2 w-40">
+                    <p className="text-[10px] font-semibold text-muted text-center leading-tight">Mobile QA Scan</p>
+                    <QrCode value={typeof window !== "undefined" ? window.location.href : ""} size={120} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* More Actions Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setMoreOpen(!moreOpen)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                moreOpen
+                  ? "bg-subtle border-indigo-200 text-foreground"
+                  : "border-border text-muted hover:text-foreground hover:bg-subtle"
+              }`}
+            >
+              <span>More</span>
+              <svg className={`w-3.5 h-3.5 text-muted transition-transform ${moreOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {moreOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
+                <div className="absolute right-0 top-full mt-1.5 w-36 z-50 bg-white border border-border rounded-xl shadow-xl py-1 px-1 flex flex-col gap-0.5">
+                  {status === "ready" && (
+                    <button
+                      onClick={() => { setEmbedModal(true); setMoreOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
+                    >
+                      Embed
+                    </button>
+                  )}
+                  <a
+                    href="/"
+                    onClick={() => setMoreOpen(false)}
+                    className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
+                  >
+                    Login
+                  </a>
+                </div>
+              </>
+            )}
+          </div>
+
           <a href="/" className="px-3.5 py-1.5 rounded-lg bg-emerald-400 text-white text-xs font-semibold hover:bg-emerald-500 transition-colors">Get Mazway</a>
         </div>
       </header>
@@ -316,6 +450,50 @@ export default function PublicSharePage() {
             <h1 className="text-lg font-semibold text-foreground">This link has expired</h1>
             <p className="text-sm text-muted mt-1 mb-4">
               This capture link is no longer available. Ask the owner to share an updated link.
+            </p>
+            <a href="/" className="text-sm text-indigo-600 font-medium hover:underline">← Login to Mazway</a>
+          </div>
+        )}
+
+        {status === "unauthorized_ip" && (
+          <div className="text-center max-w-sm">
+            <svg className="w-12 h-12 mx-auto text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h1 className="text-lg font-semibold text-foreground">Access Restricted</h1>
+            <p className="text-sm text-muted mt-1 mb-4">
+              Your IP address is not authorized to view this capture.
+            </p>
+            <a href="/" className="text-sm text-indigo-600 font-medium hover:underline">← Login to Mazway</a>
+          </div>
+        )}
+
+        {status === "needs_login" && (
+          <div className="text-center max-w-sm">
+            <svg className="w-12 h-12 mx-auto text-indigo-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <h1 className="text-lg font-semibold text-foreground">Login Required</h1>
+            <p className="text-sm text-muted mt-1 mb-6">
+              This capture is restricted to specific email domains. Please sign in to verify your identity.
+            </p>
+            <a
+              href="/"
+              className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition-colors"
+            >
+              Sign In to Mazway
+            </a>
+          </div>
+        )}
+
+        {status === "unauthorized_domain" && (
+          <div className="text-center max-w-sm">
+            <svg className="w-12 h-12 mx-auto text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h1 className="text-lg font-semibold text-foreground">Access Denied</h1>
+            <p className="text-sm text-muted mt-1 mb-4">
+              Your email domain is not authorized to view this capture.
             </p>
             <a href="/" className="text-sm text-indigo-600 font-medium hover:underline">← Login to Mazway</a>
           </div>
@@ -360,9 +538,24 @@ export default function PublicSharePage() {
       )}
 
       {status === "ready" && capture && (
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[380px] flex items-center justify-center">
+            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[380px] flex items-center justify-center relative overflow-hidden">
+              {/* Security Watermark Overlay */}
+              {((capture.allowed_domains && capture.allowed_domains.length > 0) || 
+                (capture.allowed_ips && capture.allowed_ips.length > 0)) && (
+                <div className="absolute inset-0 z-10 pointer-events-none opacity-[0.03] select-none flex flex-wrap items-center justify-center gap-16 p-4">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="text-xs font-bold font-mono tracking-widest uppercase rotate-[-25deg] whitespace-nowrap"
+                    >
+                      CONFIDENTIAL · VIEWER: {viewerEmail || "VISITOR"}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {capture.type === "video" && previewUrl ? (
                 <div className="w-full aspect-video rounded-xl overflow-hidden shadow-lg bg-black">
                   <iframe src={previewUrl} className="w-full h-full" allow="autoplay; fullscreen; encrypted-media" allowFullScreen title={capture.title}/>
@@ -386,56 +579,24 @@ export default function PublicSharePage() {
                 <div>
                   <h2 className="text-base font-semibold text-foreground">{capture.title}</h2>
                   {capture.description && <p className="text-xs text-muted mt-0.5">{capture.description}</p>}
+                  {capture.expires_at && (
+                    <p className="text-[11px] text-muted mt-1 font-medium">
+                      {getExpiryCountdown(capture.expires_at)}
+                    </p>
+                  )}
                 </div>
                 {viewCount !== null && (
                   <span className="shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">👁 {viewCount} views</span>
                 )}
               </div>
 
-              {/* Comment List */}
-              {comments.length > 0 && (
-                <div className="space-y-3 pt-3 border-t border-border/60">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Comments ({comments.length})</p>
-                  {comments.map((c) => {
-                    const name = c.author_name || "Guest";
-                    return (
-                      <div key={c.id} className="flex gap-3 text-xs bg-subtle/50 p-3 rounded-lg border border-border/50">
-                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                          {name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="font-semibold text-foreground">{name}</span>
-                            <span className="text-[10px] text-muted">{new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
-                          <p className="text-foreground leading-relaxed break-words">{c.body}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Add Comment Input */}
-              {postingError && (
-                <p className="text-[11px] text-red-600">{postingError}</p>
-              )}
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => { setNewComment(e.target.value); setPostingError(null); }}
-                  placeholder="Write a comment..."
-                  onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
-                  className="flex-1 text-xs rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-subtle/50"
+              {/* Realtime Comments Component */}
+              <div className="pt-2 border-t border-border/40">
+                <Comments
+                  captureId={capture.id}
+                  isVideo={capture.type === "video"}
+                  authorName="Visitor"
                 />
-                <button
-                  onClick={handleAddComment}
-                  disabled={posting || !newComment.trim()}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors shrink-0"
-                >
-                  {posting ? "Posting..." : "Comment"}
-                </button>
               </div>
             </div>
           </div>
@@ -457,14 +618,9 @@ export default function PublicSharePage() {
             </div>
             <p className="text-xs text-muted mb-4">Paste this code into Notion, WordPress, or your custom app.</p>
 
-            {/* QR code centered */}
+            {/* QR code centered — generated locally (no external service) */}
             <div className="flex flex-col items-center gap-1.5 mb-5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(window.location.href)}`}
-                alt="QR code"
-                className="w-32 h-32 rounded-xl border border-border shadow-sm"
-              />
+              <QrCode value={typeof window !== "undefined" ? window.location.href : ""} size={128} />
               <span className="text-[11px] text-muted">Scan to open this capture on your phone</span>
             </div>
 

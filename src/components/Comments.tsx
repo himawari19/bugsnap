@@ -92,6 +92,42 @@ export default function Comments({
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
 
+  // Guest/Visitor name prompt. Requires a name before the first post so
+  // anonymous comments are attributed to a person. Stored in localStorage so
+  // it persists across sessions on this browser.
+  const [authorNameText, setAuthorNameText] = useState("");
+  const [storedAuthorName, setStoredAuthorName] = useState<string | null>(null);
+
+  // Resolve the effective author name from the prop, then localStorage.
+  const effAuthorName =
+    (authorName && authorName.trim()) || storedAuthorName || "";
+
+  useEffect(() => {
+    // Recheck the persisted name if the prop is cleared (e.g. mounting as a
+    // visitor after being logged in).
+    if (!authorName) {
+      try {
+        setStoredAuthorName(localStorage.getItem("mazway_author_name"));
+      } catch {
+        setStoredAuthorName(null);
+      }
+    }
+  }, [authorName]);
+
+  function handleSetName() {
+    const name = authorNameText.trim();
+    if (!name) return;
+    try {
+      localStorage.setItem("mazway_author_name", name);
+    } catch {
+      /* ignore storage failures */
+    }
+    setStoredAuthorName(name);
+    setAuthorNameText("");
+  }
+
+  const needsName = !effAuthorName;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -141,6 +177,10 @@ export default function Comments({
   async function handleSubmit() {
     const text = body.trim();
     if (!text || submitting) return;
+    if (needsName) {
+      setError("Enter your name to comment.");
+      return;
+    }
 
     let video_timestamp: number | null = null;
     if (isVideo && timestampOn) {
@@ -157,7 +197,7 @@ export default function Comments({
       }
     }
 
-    const author_name = authorName || null;
+    const author_name = effAuthorName || null;
     const author_email = authorEmail || null;
     const optimisticId = `local-${Date.now()}`;
     setComments((prev) => [
@@ -217,7 +257,7 @@ export default function Comments({
   async function handleReply(parentId: string) {
     const text = replyBody.trim();
     if (!text || replying) return;
-    const author_name = authorName || null;
+    const author_name = effAuthorName || null;
     const author_email = authorEmail || null;
     setReplying(true);
     try {
@@ -257,6 +297,37 @@ export default function Comments({
     <div className="space-y-3">
       {/* Composer (always visible) */}
       <div className="space-y-2 shrink-0">
+        {needsName ? (
+          <div className="space-y-2 rounded-lg border border-border bg-subtle/40 p-3">
+            <label htmlFor="comment-author-name" className="block text-xs font-medium text-foreground">
+              Enter your name to comment:
+            </label>
+            <input
+              id="comment-author-name"
+              value={authorNameText}
+              onChange={(e) => setAuthorNameText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSetName();
+                }
+              }}
+              placeholder="Your name"
+              maxLength={80}
+              autoComplete="nickname"
+              className="w-full text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 bg-white placeholder:text-muted/70"
+            />
+            <button
+              type="button"
+              onClick={handleSetName}
+              disabled={!authorNameText.trim()}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Set Name
+            </button>
+          </div>
+        ) : (
+        <>      
         {isVideo && (
           <div className="flex items-center gap-2">
             <input
@@ -317,6 +388,8 @@ export default function Comments({
             {submitting ? "Posting…" : "Post"}
           </button>
         </div>
+      </>
+      )}
       </div>
 
       {/* List — scrolls internally so long threads never push the page
@@ -369,6 +442,21 @@ export default function Comments({
                         >
                           Reply
                         </button>
+                        <a
+                          href={`https://github.com/new?title=${encodeURIComponent(
+                            `[Capture] ${c.body.slice(0, 60)}`
+                          )}&body=${encodeURIComponent(
+                            `**Comment:** ${c.body}\n\n**By:** ${name}\n**At:** ${formatDate(
+                              c.created_at
+                            )}${ts != null ? `\n**Video timestamp:** ${formatTimestamp(ts)}` : ""}\n\nCapture: ${typeof window !== "undefined" ? window.location.href : ""}`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Create GitHub issue from this comment"
+                          className="text-[10px] font-medium text-muted hover:text-indigo-600 transition-colors"
+                        >
+                          Issue
+                        </a>
                       </div>
                       <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap break-words">
                         {c.body}

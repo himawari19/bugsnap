@@ -43,20 +43,38 @@ export default function DashboardLayout({
   const [members, setMembers] = useState<Record<string, string[]>>({});
   const [session, setSession] = useState<{
     loading: boolean;
-    user: null | { id: string; email: string; name: string; avatar: string };
+    user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
   }>({ loading: true, user: null });
+  const [billingModalOpen, setBillingModalOpen] = useState(false);
+  const [newCommentCount, setNewCommentCount] = useState(0);
 
-  // Auth guard: a Supabase session is required to view the dashboard.
-  // The captures table is RLS-locked to the signed-in user, so without a
-  // session the grid is always empty (the original "blank" symptom).
+  // In-app notification: count comments on this user's captures posted
+  // within the last 24h. Polled lightly; realtime could replace this later.
   useEffect(() => {
-    // Read ?ws= from the URL without useSearchParams (avoids the
-    // suspense-boundary requirement for prerendered layouts).
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      setWsParam(url.searchParams.get("ws"));
-    }
-  }, []);
+    const email = session.user?.email;
+    if (!email) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: mine } = await supabase
+          .from("captures")
+          .select("id")
+          .eq("owner_email", email);
+        const ids = (mine ?? []).map((r) => r.id);
+        if (!ids.length) { if (!cancelled) setNewCommentCount(0); return; }
+        const { count } = await supabase
+          .from("comments")
+          .select("id", { count: "exact", head: true })
+          .in("capture_id", ids)
+          .gte("created_at", since);
+        if (!cancelled) setNewCommentCount(count ?? 0);
+      } catch { /* silent */ }
+    };
+    poll();
+    const t = setInterval(poll, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [session.user?.email]);
 
   useEffect(() => {
     let active = true;
@@ -76,6 +94,7 @@ export default function DashboardLayout({
           email: u.email || "",
           name: meta.full_name || meta.name || u.email?.split("@")[0] || "User",
           avatar: meta.avatar_url || meta.picture || "",
+          plan: (meta.plan || "free") as "free" | "pro",
         },
       });
     });
@@ -91,6 +110,15 @@ export default function DashboardLayout({
       sub.subscription.unsubscribe();
     };
   }, [router]);
+
+  // Read ?ws= from the URL without useSearchParams (avoids the
+  // suspense-boundary requirement for prerendered layouts).
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      setWsParam(url.searchParams.get("ws"));
+    }
+  }, []);
 
   // Load the user's workspaces (owned or invited) via the RLS-safe RPC
   // once the session resolves. Falls back to the default single-workspace
@@ -121,6 +149,11 @@ export default function DashboardLayout({
           );
           if (refetchErr) throw refetchErr;
           rows = (refetched ?? []) as Workspace[];
+          
+          // Force set the URL and active state for this newly created workspace
+          if (rows[0]?.id) {
+            router.replace(`?ws=${rows[0].id}`, { scroll: false });
+          }
         }
 
         // Members per workspace (emails joined from auth.users via RPC).
@@ -152,7 +185,7 @@ export default function DashboardLayout({
           wsParam && rows.some((w) => w.id === wsParam)
             ? wsParam
             : rows[0]?.id ?? null;
-        setActiveWsId((prev) => prev ?? initialWs);
+        setActiveWsId(initialWs);
       } catch (err) {
         console.warn("Failed to load workspaces:", err);
         // Degrade gracefully: the default "Personal Workspace" view (no
@@ -228,9 +261,59 @@ export default function DashboardLayout({
     }
   };
 
+  const handleRenameWorkspace = async (id: string, currentName: string) => {
+    const newName = window.prompt("Rename workspace to:", currentName);
+    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+    try {
+      const { error } = await supabase
+        .from("workspaces")
+        .update({ name: newName.trim() })
+        .eq("id", id);
+      if (error) throw error;
+      setWorkspaces((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, name: newName.trim() } : w))
+      );
+    } catch (err) {
+      console.warn("Failed to rename workspace:", err);
+      alert("Could not rename workspace.");
+    }
+  };
+
+  const handleDeleteWorkspace = async (id: string, name: string) => {
+    if (workspaces.length <= 1) {
+      alert("You must keep at least one workspace.");
+      return;
+    }
+    const confirm = window.confirm(`Are you sure you want to delete "${name}"? This will delete all its members and captures.`);
+    if (!confirm) return;
+    try {
+      const { error } = await supabase.from("workspaces").delete().eq("id", id);
+      if (error) throw error;
+      const remaining = workspaces.filter((w) => w.id !== id);
+      setWorkspaces(remaining);
+      const nextActiveId = remaining[0]?.id || null;
+      setActiveWsId(nextActiveId);
+      if (nextActiveId) {
+        router.replace(`?ws=${nextActiveId}`, { scroll: false });
+      } else {
+        router.replace(pathname, { scroll: false });
+      }
+    } catch (err) {
+      console.warn("Failed to delete workspace:", err);
+      alert("Could not delete workspace.");
+    }
+  };
+
   const handleInvite = async () => {
     const email = inviteEmail.trim();
     if (!email || !activeWsId || inviting) return;
+
+    // SaaS Seats Limit: Max 5 members on Free tier
+    if (currentUser.plan === "free" && activeMembers.length >= 4) {
+      setInviteError("Free workspaces are limited to 5 members. Upgrade to Pro for unlimited seats.");
+      return;
+    }
+
     setInviting(true);
     setInviteError(null);
     try {
@@ -260,9 +343,9 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col">
+      <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full">
         <div className="px-5 py-6 border-b border-border">
           <h1 className="text-xl font-bold tracking-tight text-foreground">
             Mazway
@@ -296,29 +379,65 @@ export default function DashboardLayout({
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Workspaces</p>
                 </div>
                 {workspaces.map((ws) => (
-                  <button
+                  <div
                     key={ws.id}
-                    onClick={() => {
-                      setActiveWsId(ws.id);
-                      setWsOpen(false);
-                      router.replace(`?ws=${ws.id}`, { scroll: false });
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${
-                      activeWsId === ws.id ? "text-indigo-600 bg-indigo-50 font-medium" : "text-foreground hover:bg-subtle"
+                    className={`w-full flex items-center justify-between gap-1 px-1 rounded-lg group/item transition-colors ${
+                      activeWsId === ws.id ? "bg-indigo-50 font-medium" : "hover:bg-subtle"
                     }`}
                   >
-                    <span className={`w-6 h-6 rounded-md text-[11px] font-semibold flex items-center justify-center shrink-0 ${
-                      activeWsId === ws.id ? "bg-indigo-600 text-white" : "bg-subtle text-muted"
-                    }`}>
-                      {ws.name.charAt(0)}
-                    </span>
-                    <span className="flex-1 truncate text-left">{ws.name}</span>
-                    {activeWsId === ws.id && (
-                      <svg className="w-4 h-4 text-indigo-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
+                    <button
+                      onClick={() => {
+                        setActiveWsId(ws.id);
+                        setWsOpen(false);
+                        router.replace(`?ws=${ws.id}`, { scroll: false });
+                      }}
+                      className={`flex-1 flex items-center gap-3 px-2 py-2 text-sm text-left truncate ${
+                        activeWsId === ws.id ? "text-indigo-600 font-medium" : "text-foreground"
+                      }`}
+                    >
+                      <span className={`w-6 h-6 rounded-md text-[11px] font-semibold flex items-center justify-center shrink-0 ${
+                        activeWsId === ws.id ? "bg-indigo-600 text-white" : "bg-subtle text-muted"
+                      }`}>
+                        {ws.name.charAt(0)}
+                      </span>
+                      <span className="truncate flex-1">{ws.name}</span>
+                      {activeWsId === ws.id && (
+                        <svg className="w-4 h-4 text-indigo-600 shrink-0 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    {/* Workspace Actions (Rename & Delete) — visible only for owners */}
+                    {ws.role === "owner" && (
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 pr-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRenameWorkspace(ws.id, ws.name);
+                          }}
+                          title="Rename Workspace"
+                          className="p-1 rounded text-muted hover:text-foreground hover:bg-neutral-200/50 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteWorkspace(ws.id, ws.name);
+                          }}
+                          title="Delete Workspace"
+                          className="p-1 rounded text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 ))}
 
                 {/* Workspace Members list */}
@@ -396,10 +515,31 @@ export default function DashboardLayout({
               >
                 <span className="text-base">{item.icon}</span>
                 {item.label}
+                {/* In-app notification badge (new comments, 24h) */}
+                {item.href === "/captures" && newCommentCount > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {newCommentCount > 99 ? "99+" : newCommentCount}
+                  </span>
+                )}
               </Link>
             );
           })}
         </nav>
+
+        {/* SaaS Upgrade CTA (Free tier only) */}
+        {currentUser.plan !== "pro" && (
+          <div className="px-4 py-3 mx-3 mb-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+            <h5 className="text-[11px] font-bold text-indigo-900 tracking-wide uppercase">Upgrade to Pro</h5>
+            <p className="text-[10px] text-indigo-700 leading-tight mt-1 mb-2.5">Unlock E2EE, IP Whitelist, seats limits, and E2E security.</p>
+            <button
+              onClick={() => setBillingModalOpen(true)}
+              className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors text-center block"
+            >
+              Upgrade Now
+            </button>
+          </div>
+        )}
+
         <div className="relative px-3 py-4 border-t border-border">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -414,7 +554,14 @@ export default function DashboardLayout({
               </div>
             )}
             <div className="text-sm min-w-0 flex-1">
-              <p className="font-medium text-foreground truncate">{currentUser.name}</p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="font-medium text-foreground truncate">{currentUser.name}</p>
+                {currentUser.plan === "pro" && (
+                  <span className="bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0 rounded inline-flex items-center justify-center leading-none h-[15px] shrink-0 uppercase tracking-wide">
+                    PRO
+                  </span>
+                )}
+              </div>
               <p className="text-muted text-xs truncate">{currentUser.email}</p>
             </div>
           </button>
@@ -453,7 +600,7 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 h-full overflow-y-auto">{children}</main>
 
       {/* Invite Modal */}
       {inviteModalOpen && (
@@ -543,6 +690,71 @@ export default function DashboardLayout({
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 Create Workspace
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Billing / Upgrade Modal */}
+      {billingModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setBillingModalOpen(false)} />
+          <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border p-6 text-center">
+            <h2 className="text-xl font-bold text-foreground mb-1">Upgrade to Mazway Pro</h2>
+            <p className="text-sm text-muted mb-6">
+              Get advanced security, unrestricted teams, and premium developer capabilities.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="p-4 rounded-xl border border-border bg-subtle text-left">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Free Plan</span>
+                <p className="text-2xl font-extrabold text-foreground mt-1">$0</p>
+                <ul className="text-[11px] text-muted space-y-1.5 mt-3">
+                  <li>• Max 5 team members</li>
+                  <li>• Basic share links</li>
+                  <li>• Basic analytics</li>
+                </ul>
+              </div>
+              <div className="p-4 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 text-left relative overflow-hidden">
+                <span className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">Popular</span>
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Pro Plan</span>
+                <p className="text-2xl font-extrabold text-foreground mt-1">$15<span className="text-xs font-normal text-muted">/mo</span></p>
+                <ul className="text-[11px] text-indigo-950 space-y-1.5 mt-3">
+                  <li>• Unlimited members</li>
+                  <li>• E2EE log protection</li>
+                  <li>• IP & Domain whitelist</li>
+                  <li>• Burn-after-reading</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <button
+                onClick={() => setBillingModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Update user metadata in Supabase auth to simulate payment success
+                    const { error } = await supabase.auth.updateUser({
+                      data: { plan: "pro" }
+                    });
+                    if (error) throw error;
+                    setBillingModalOpen(false);
+                    // Reload window to re-fetch session with metadata
+                    window.location.reload();
+                  } catch (err) {
+                    console.warn("Upgrade error:", err);
+                    alert("Could not complete mock checkout.");
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                Simulate Payment & Upgrade
               </button>
             </div>
           </div>

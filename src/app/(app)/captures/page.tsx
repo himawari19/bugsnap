@@ -21,6 +21,11 @@ interface Capture {
   duration?: number | null;
   tag?: string | null;
   status?: string | null;
+  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string }[] | null;
+  burn_after_read?: boolean;
+  allowed_domains?: string[] | null;
+  allowed_ips?: string[] | null;
+  owner_email?: string | null;
 }
 
 const TAG_OPTIONS = ["bug", "feature-request", "wip", "design", "other"];
@@ -30,6 +35,7 @@ interface EditModalProps {
   capture: Capture;
   onClose: () => void;
   onSaved: (updated: Capture) => void;
+  userPlan: "free" | "pro";
 }
 
 const EXPIRY_OPTIONS: { value: "never" | "24h" | "7d"; label: string }[] = [
@@ -58,6 +64,30 @@ function formatDuration(sec: number | null | undefined): string {
   return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
+function getAvatarColor(seed: string | null | undefined): string {
+  const colors = [
+    "bg-indigo-600",
+    "bg-emerald-600",
+    "bg-rose-600",
+    "bg-amber-600",
+    "bg-violet-600",
+    "bg-teal-600",
+    "bg-fuchsia-600",
+  ];
+  let h = 0;
+  const s = seed || "";
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return colors[h % colors.length];
+}
+
+function getOwnerInitial(email: string | null | undefined): string {
+  if (!email) return "M";
+  // Filter out punctuation commonly at the start of title, get clean first letter
+  const clean = email.replace(/[^a-zA-Z0-9]/g, "").trim();
+  const char = clean.charAt(0);
+  return (char || "M").toUpperCase();
+}
+
 function driveFileId(driveUrl: string): string | null {
   const m = driveUrl.match(/[?&]id=([^&]+)/) || driveUrl.match(/\/d\/([^/]+)/);
   return m ? decodeURIComponent(m[1]) : null;
@@ -68,6 +98,13 @@ function driveThumbUrl(driveUrl: string, size = 400): string | null {
   return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w${size}` : null;
 }
 
+function consoleErrorCount(item: Capture): number {
+  if (!Array.isArray(item.dev_logs)) return 0;
+  return item.dev_logs.filter(
+    (l) => l.type === "console" && l.level !== "warn" && l.level !== "warning"
+  ).length;
+}
+
 function expiryToOption(expiresAt: string | null | undefined, createdAt: string): string {
   if (!expiresAt) return "never";
   const diffMs = new Date(expiresAt).getTime() - new Date(createdAt).getTime();
@@ -76,7 +113,7 @@ function expiryToOption(expiresAt: string | null | undefined, createdAt: string)
   return "never";
 }
 
-function EditModal({ capture, onClose, onSaved }: EditModalProps) {
+function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
   const [title, setTitle] = useState(capture.title);
   const [description, setDescription] = useState(capture.description || "");
   const [password, setPassword] = useState(capture.password || "");
@@ -85,6 +122,9 @@ function EditModal({ capture, onClose, onSaved }: EditModalProps) {
   const [expiry, setExpiry] = useState<string>(() =>
     expiryToOption(capture.expires_at, capture.created_at)
   );
+  const [burnAfterRead, setBurnAfterRead] = useState(capture.burn_after_read || false);
+  const [allowedDomainsText, setAllowedDomainsText] = useState(() => (capture.allowed_domains || []).join(", "));
+  const [allowedIpsText, setAllowedIpsText] = useState(() => (capture.allowed_ips || []).join(", "));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +136,14 @@ function EditModal({ capture, onClose, onSaved }: EditModalProps) {
     if (expiry === "24h") expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     if (expiry === "7d") expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    const allowed_domains = allowedDomainsText.trim() 
+      ? allowedDomainsText.split(",").map(d => d.trim().toLowerCase()).filter(Boolean)
+      : null;
+
+    const allowed_ips = allowedIpsText.trim()
+      ? allowedIpsText.split(",").map(ip => ip.trim()).filter(Boolean)
+      : null;
+
     const { data, error } = await supabase
       .from("captures")
       .update({
@@ -105,6 +153,9 @@ function EditModal({ capture, onClose, onSaved }: EditModalProps) {
         expires_at: expiresAt,
         tag: tag || null,
         status: status || null,
+        burn_after_read: burnAfterRead,
+        allowed_domains,
+        allowed_ips,
       })
       .eq("id", capture.id)
       .select()
@@ -222,6 +273,63 @@ function EditModal({ capture, onClose, onSaved }: EditModalProps) {
                       ).toLocaleDateString()}.`}
                 </p>
               </div>
+
+              {/* Advanced Security Upgrades */}
+              <div className="border-t border-border pt-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-semibold text-foreground">Advanced Protection</h4>
+                  {userPlan === "free" && (
+                    <span className="bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Pro Only</span>
+                  )}
+                </div>
+                
+                {/* Burn after reading */}
+                <label className={`flex items-center gap-2.5 text-xs text-foreground select-none ${userPlan === "free" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                  <input
+                    type="checkbox"
+                    checked={burnAfterRead}
+                    disabled={userPlan === "free"}
+                    onChange={(e) => setBurnAfterRead(e.target.checked)}
+                    className="w-4 h-4 rounded border-border text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                  />
+                  <div>
+                    <p className="font-medium">Burn-after-reading</p>
+                    <p className="text-[10px] text-muted leading-tight mt-0.5">Link automatically expires after the first view.</p>
+                  </div>
+                </label>
+
+                {/* Domain Whitelist */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-medium text-muted">Domain Whitelist</label>
+                  </div>
+                  <input
+                    type="text"
+                    value={allowedDomainsText}
+                    disabled={userPlan === "free"}
+                    onChange={(e) => setAllowedDomainsText(e.target.value)}
+                    placeholder={userPlan === "free" ? "Upgrade to Pro to restrict domains" : "e.g. tokopedia.com, gojek.com (comma separated)"}
+                    className={`${inputClasses} disabled:bg-subtle disabled:text-muted/60 disabled:cursor-not-allowed`}
+                  />
+                  <p className="text-[9px] text-muted leading-tight mt-1">Restrict access only to users logging in with these email domains.</p>
+                </div>
+
+                {/* IP Whitelist */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-medium text-muted">IP Whitelist</label>
+                  </div>
+                  <input
+                    type="text"
+                    value={allowedIpsText}
+                    disabled={userPlan === "free"}
+                    onChange={(e) => setAllowedIpsText(e.target.value)}
+                    placeholder={userPlan === "free" ? "Upgrade to Pro to restrict IPs" : "e.g. 192.168.1.1, 103.88.22.1 (comma separated)"}
+                    className={`${inputClasses} disabled:bg-subtle disabled:text-muted/60 disabled:cursor-not-allowed`}
+                  />
+                  <p className="text-[9px] text-muted leading-tight mt-1">Only allow access from these IP addresses.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -267,19 +375,54 @@ function CapturesContent() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [thumbFailed, setThumbFailed] = useState<Record<string, boolean>>({});
+  const [userPlan, setUserPlan] = useState<"free" | "pro">("free");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeHoverId, setActiveHoverId] = useState<string | null>(null);
+  const [shortcutCopied, setShortcutCopied] = useState(false);
+  const shortcutToastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "c" && e.key !== "C") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!activeHoverId) return;
+      const shareUrl = `${window.location.origin}/c/${activeHoverId}`;
+      navigator.clipboard?.writeText(shareUrl).catch(() => {});
+      setShortcutCopied(true);
+      if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
+      shortcutToastRef.current = setTimeout(() => setShortcutCopied(false), 2000);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
+    };
+  }, [activeHoverId]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user;
+      if (u?.user_metadata?.plan) {
+        setUserPlan(u.user_metadata.plan as "free" | "pro");
+      }
+    });
+  }, []);
 
   // Dropdown states: false = not actively filtering by this type.
   // If BOTH are false, we show ALL (no filter applied).
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [showScreenshot, setShowScreenshot] = useState(false);
+  const [filterTag, setFilterTag] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
 
   // Infinite scroll / pagination state
   const PAGE_SIZE = 12;
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const pageRef = useRef(0);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const loadPage = useCallback(
     async (pageToLoad: number, replace: boolean) => {
@@ -337,23 +480,28 @@ function CapturesContent() {
     };
   }, [wsParam]);
 
-  // IntersectionObserver: load more when the sentinel enters the viewport
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          setLoadingMore(true);
-          pageRef.current += 1;
-          loadPage(pageRef.current, false).finally(() => setLoadingMore(false));
-        }
-      },
-      { rootMargin: "300px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, loadingMore, loadPage]);
+  // IntersectionObserver: Callback Ref to safely load more when the sentinel enters the viewport
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (observerRef.current) observerRef.current.disconnect();
+      if (!node || !hasMore || loadingMore) return;
+
+      const obs = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && hasMore && !loadingMore) {
+            setLoadingMore(true);
+            pageRef.current += 1;
+            loadPage(pageRef.current, false).finally(() => setLoadingMore(false));
+          }
+        },
+        { rootMargin: "300px" }
+      );
+      obs.observe(node);
+      observerRef.current = obs;
+    },
+    [hasMore, loadingMore, loadPage]
+  );
 
   // Displayed captures, restricted to the active workspace when present.
   // Client-side filter guards against the workspace_id column not existing
@@ -366,6 +514,13 @@ function CapturesContent() {
       c.workspace_id === null ||
       c.workspace_id === wsParam
   );
+
+  const handleCopyLink = (id: string) => {
+    const shareUrl = `${window.location.origin}/c/${id}`;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   async function handleDelete(id: string) {
     setDeleting(id);
@@ -424,9 +579,21 @@ function CapturesContent() {
       (!showVideo && !showScreenshot) ||
       (item.type === "video" && showVideo) ||
       (item.type === "screenshot" && showScreenshot);
-    const matchesSearch =
-      !search.trim() || item.title.toLowerCase().includes(search.toLowerCase());
-    return matchesType && matchesSearch;
+
+    const matchesTag = !filterTag || item.tag === filterTag;
+    const matchesStatus = !filterStatus || item.status === filterStatus;
+
+    const q = search.trim().toLowerCase();
+    const matchesSearch = !q ||
+      item.title.toLowerCase().includes(q) ||
+      (Array.isArray(item.dev_logs) &&
+        item.dev_logs.some((l) =>
+          [l.message, l.text, l.url, l.method]
+            .filter(Boolean)
+            .some((v) => String(v).toLowerCase().includes(q))
+        ));
+
+    return matchesType && matchesTag && matchesStatus && matchesSearch;
   });
 
   const videoCount = workspaceCaptures.filter((c) => c.type === "video").length;
@@ -434,6 +601,11 @@ function CapturesContent() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      {shortcutCopied && activeHoverId && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+          Copied! Press &quot;C&quot; while hovering to copy the public link.
+        </div>
+      )}
       {/* Header & Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">All Captures</h1>
@@ -584,6 +756,36 @@ function CapturesContent() {
             </>
           )}
         </div>
+
+        {/* Tag Filter */}
+        <div className="flex items-center gap-1.5 text-xs border border-border bg-white rounded-lg px-2 py-1.5 text-muted hover:text-foreground hover:bg-subtle transition-colors">
+          <span>Tag:</span>
+          <select
+            value={filterTag}
+            onChange={(e) => setFilterTag(e.target.value)}
+            className="bg-transparent font-medium text-foreground outline-none cursor-pointer"
+          >
+            <option value="">All</option>
+            {TAG_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex items-center gap-1.5 text-xs border border-border bg-white rounded-lg px-2 py-1.5 text-muted hover:text-foreground hover:bg-subtle transition-colors">
+          <span>Status:</span>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="bg-transparent font-medium text-foreground outline-none cursor-pointer"
+          >
+            <option value="">All</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {deleteError && (
@@ -643,6 +845,8 @@ function CapturesContent() {
             return (
             <div
               key={item.id}
+              onMouseEnter={() => setActiveHoverId(item.id)}
+              onMouseLeave={() => setActiveHoverId((prev) => (prev === item.id ? null : prev))}
               className={`relative rounded-xl border bg-white hover:shadow-sm transition-all flex flex-col ${
                 isSelected ? "border-indigo-600 ring-2 ring-indigo-600/20" : "border-border"
               }`}
@@ -697,25 +901,33 @@ function CapturesContent() {
 
                   {/* Top-Left Avatar / Initial Badge (Jam.dev style) */}
                   <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-rose-600 text-white text-xs font-bold flex items-center justify-center shadow-sm border border-white/20">
-                      {(item.title.charAt(0) || "M").toUpperCase()}
+                    <div className={`w-7 h-7 rounded-full ${getAvatarColor(item.owner_email)} text-white text-xs font-bold flex items-center justify-center shadow-sm border border-white/20`}>
+                      {getOwnerInitial(item.owner_email)}
                     </div>
                     <span className="text-xs font-medium text-white drop-shadow-sm truncate max-w-[120px]">
                       {item.title}
                     </span>
                   </div>
 
-                  {item.expires_at && new Date(item.expires_at).getTime() < Date.now() && (
-                    <span className="absolute top-3 right-10 text-[10px] font-semibold uppercase tracking-wider text-red-100 bg-red-600/80 px-2 py-0.5 rounded backdrop-blur-sm">
-                      Expired
-                    </span>
-                  )}
-                  {item.password && (
-                    <span className="absolute top-3 right-10 text-[10px] font-semibold text-amber-100 bg-amber-600/80 px-2 py-0.5 rounded backdrop-blur-sm flex items-center gap-1">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-                      Locked
-                    </span>
-                  )}
+                  {/* Status Badges container (Berjejer rapi di kanan atas, tidak overlap) */}
+                  <div className="absolute top-3 right-10 flex items-center gap-1.5 z-10">
+                    {item.expires_at && new Date(item.expires_at).getTime() < Date.now() && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-red-100 bg-red-600/80 px-2 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                        Expired
+                      </span>
+                    )}
+                    {item.password && (
+                      <span className="text-[10px] font-semibold text-amber-100 bg-amber-600/80 px-2 py-0.5 rounded backdrop-blur-sm flex items-center gap-1 shadow-sm">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                        Locked
+                      </span>
+                    )}
+                    {consoleErrorCount(item) > 0 && (
+                      <span className="text-[10px] font-semibold text-red-100 bg-red-600/80 px-2 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                        🔴 {consoleErrorCount(item)} errors
+                      </span>
+                    )}
+                  </div>
 
                   {/* Bottom Right Duration (Jam.dev style) - Only shows for video */}
                   {item.type === "video" && (
@@ -780,6 +992,18 @@ function CapturesContent() {
                   <div className="absolute right-2.5 top-10 z-50 w-36 rounded-lg border border-border bg-white shadow-lg py-1">
                     <button
                       onClick={() => {
+                        handleCopyLink(item.id);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-subtle transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.1-1.1m-.758-4.9a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                      </svg>
+                      {copiedId === item.id ? "Copied!" : "Copy Link"}
+                    </button>
+                    <button
+                      onClick={() => {
                         setEditing(item);
                         setOpenMenuId(null);
                       }}
@@ -822,7 +1046,7 @@ function CapturesContent() {
         </div>
       )}
 
-      {editing && <EditModal capture={editing} onClose={() => setEditing(null)} onSaved={(updated) => setCaptures((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))} />}
+      {editing && <EditModal capture={editing} userPlan={userPlan} onClose={() => setEditing(null)} onSaved={(updated) => setCaptures((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))} />}
     </div>
   );
 }
