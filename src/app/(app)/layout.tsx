@@ -56,12 +56,22 @@ export default function DashboardLayout({
   const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
 
+  // Custom Rename & Delete Workspace Modal states
+  const [renameWsModalOpen, setRenameWsModalOpen] = useState(false);
+  const [wsToRename, setWsToRename] = useState<string | null>(null);
+  const [renameWsNameInput, setRenameWsNameInput] = useState("");
+
+  const [deleteWsModalOpen, setDeleteWsModalOpen] = useState(false);
+  const [wsToDelete, setWsToDelete] = useState<string | null>(null);
+  const [deletingWs, setDeletingWs] = useState(false);
+
   const [session, setSession] = useState<{
     loading: boolean;
     user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
   }>({ loading: true, user: null });
   const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [newCommentCount, setNewCommentCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   // In-app notification: count comments on this user's captures posted
   // within the last 24h. Polled lightly; realtime could replace this later.
@@ -94,7 +104,7 @@ export default function DashboardLayout({
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
       const u = data.session?.user;
       if (!u) {
@@ -102,14 +112,28 @@ export default function DashboardLayout({
         return;
       }
       const meta = u.user_metadata || {};
+      const userEmail = u.email || "";
+      
+      // Read the plan from public.users (source of truth updated by the
+      // Stripe webhook) so upgrades take effect immediately without re-login.
+      let dbPlan: "free" | "pro" = (meta.plan || "free") as "free" | "pro";
+      if (userEmail) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("plan")
+          .ilike("email", userEmail)
+          .maybeSingle();
+        if (userRow?.plan === "pro") dbPlan = "pro";
+      }
+
       setSession({
         loading: false,
         user: {
           id: u.id,
-          email: u.email || "",
-          name: meta.full_name || meta.name || u.email?.split("@")[0] || "User",
+          email: userEmail,
+          name: meta.full_name || meta.name || userEmail?.split("@")[0] || "User",
           avatar: meta.avatar_url || meta.picture || "",
-          plan: (meta.plan || "free") as "free" | "pro",
+          plan: dbPlan,
         },
       });
     });
@@ -211,7 +235,7 @@ export default function DashboardLayout({
     return () => {
       active = false;
     };
-  }, [session.user?.id, wsParam]);
+  }, [session.user?.id, wsParam, router]);
 
   // Load the list of unique folders for the active workspace
   useEffect(() => {
@@ -425,35 +449,51 @@ export default function DashboardLayout({
     }
   };
 
-  const handleRenameWorkspace = async (id: string, currentName: string) => {
-    const newName = window.prompt("Rename workspace to:", currentName);
-    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+  const handleRenameWorkspace = (id: string, currentName: string) => {
+    setWsToRename(id);
+    setRenameWsNameInput(currentName);
+    setRenameWsModalOpen(true);
+  };
+
+  const submitRenameWorkspace = async () => {
+    if (!wsToRename) return;
+    const newName = renameWsNameInput.trim();
+    if (!newName || newName === (workspaces.find(w => w.id === wsToRename)?.name || "")) {
+      setRenameWsModalOpen(false);
+      return;
+    }
     try {
       const { error } = await supabase
         .from("workspaces")
-        .update({ name: newName.trim() })
-        .eq("id", id);
+        .update({ name: newName })
+        .eq("id", wsToRename);
       if (error) throw error;
       setWorkspaces((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, name: newName.trim() } : w))
+        prev.map((w) => (w.id === wsToRename ? { ...w, name: newName } : w))
       );
+      setRenameWsModalOpen(false);
     } catch (err) {
       console.warn("Failed to rename workspace:", err);
       alert("Could not rename workspace.");
     }
   };
 
-  const handleDeleteWorkspace = async (id: string, name: string) => {
+  const handleDeleteWorkspace = (id: string, name: string) => {
     if (workspaces.length <= 1) {
       alert("You must keep at least one workspace.");
       return;
     }
-    const confirm = window.confirm(`Are you sure you want to delete "${name}"? This will delete all its members and captures.`);
-    if (!confirm) return;
+    setWsToDelete(id);
+    setDeleteWsModalOpen(true);
+  };
+
+  const submitDeleteWorkspace = async () => {
+    if (!wsToDelete || deletingWs) return;
+    setDeletingWs(true);
     try {
-      const { error } = await supabase.from("workspaces").delete().eq("id", id);
+      const { error } = await supabase.from("workspaces").delete().eq("id", wsToDelete);
       if (error) throw error;
-      const remaining = workspaces.filter((w) => w.id !== id);
+      const remaining = workspaces.filter((w) => w.id !== wsToDelete);
       setWorkspaces(remaining);
       const nextActiveId = remaining[0]?.id || null;
       setActiveWsId(nextActiveId);
@@ -462,9 +502,12 @@ export default function DashboardLayout({
       } else {
         router.replace(pathname, { scroll: false });
       }
+      setDeleteWsModalOpen(false);
     } catch (err) {
       console.warn("Failed to delete workspace:", err);
       alert("Could not delete workspace.");
+    } finally {
+      setDeletingWs(false);
     }
   };
 
@@ -509,7 +552,7 @@ export default function DashboardLayout({
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full">
+      <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full overflow-visible">
         <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
           <svg viewBox="0 0 128 128" className="w-7 h-7 shrink-0" role="img" aria-label="Mazway">
             <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#sidebar-lg)" />
@@ -530,6 +573,52 @@ export default function DashboardLayout({
               Mazway
             </h1>
             <p className="text-[10px] text-muted mt-1 leading-none font-medium">Screen Recorder</p>
+          </div>
+
+          {/* Notification Bell */}
+          <div className="relative ml-auto">
+            <button
+              onClick={() => setNotifOpen((o) => !o)}
+              className="relative p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-subtle transition-colors"
+              aria-label="Notifications"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {newCommentCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {newCommentCount > 99 ? "99+" : newCommentCount}
+                </span>
+              )}
+            </button>
+
+            {notifOpen && (
+              <>
+                {/* Click-catcher that closes the dropdown without blocking page scroll */}
+                <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} onWheel={() => setNotifOpen(false)} />
+                <div className="fixed left-4 top-16 z-50 w-64 rounded-xl border border-border bg-white shadow-xl py-2 px-1">
+                  <div className="px-3 py-1 mb-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Notifications</p>
+                  </div>
+                  {newCommentCount > 0 ? (
+                    <div
+                      className="px-3 py-2 text-xs text-foreground cursor-pointer hover:bg-subtle rounded-lg transition-colors"
+                      onClick={() => {
+                        setNotifOpen(false);
+                        setNewCommentCount(0);
+                        router.push("/captures");
+                      }}
+                    >
+                      <p className="font-medium">💬 {newCommentCount} new comment{newCommentCount > 1 ? "s" : ""} on your captures in the last 24h</p>
+                    </div>
+                  ) : (
+                    <div className="px-3 py-4 text-center">
+                      <p className="text-xs text-muted">No new notifications</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1148,6 +1237,83 @@ export default function DashboardLayout({
                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
                 {deletingFolder ? "Deleting..." : "Delete Folder"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Workspace Modal */}
+      {renameWsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setRenameWsModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
+            <h2 className="text-lg font-bold text-foreground mb-1">Rename Workspace</h2>
+            <p className="text-sm text-muted mb-5">Enter a new name for this workspace.</p>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Workspace Name</label>
+              <input
+                type="text"
+                value={renameWsNameInput}
+                onChange={(e) => setRenameWsNameInput(e.target.value)}
+                placeholder="e.g. QA Team"
+                className="w-full text-sm rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-white"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && renameWsNameInput.trim()) {
+                    submitRenameWorkspace();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => setRenameWsModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitRenameWorkspace}
+                disabled={!renameWsNameInput.trim()}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Workspace Modal (Jira Style Popup Confirmation) */}
+      {deleteWsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteWsModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6 text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Delete Workspace?</h2>
+            <p className="text-xs text-muted leading-relaxed mb-6">
+              Are you sure you want to delete this workspace?<br/>
+              <span className="text-red-600 font-medium">WARNING:</span> All its members and captures will be permanently deleted.
+            </p>
+            
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <button
+                onClick={() => setDeleteWsModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitDeleteWorkspace}
+                disabled={deletingWs}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deletingWs ? "Deleting..." : "Delete Workspace"}
               </button>
             </div>
           </div>

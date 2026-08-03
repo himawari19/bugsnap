@@ -77,6 +77,8 @@ export default function SingleViewPage() {
   const [aiCopied, setAiCopied] = useState(false);
   const [embedModal, setEmbedModal] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
+  const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
+  const [deletingCapture, setDeletingCapture] = useState(false);
 
   // Edit / Delete for internal workspace members
   const [isTeamMember, setIsTeamMember] = useState(false);
@@ -133,9 +135,23 @@ export default function SingleViewPage() {
         try {
           const { data: authData } = await supabase.auth.getSession();
           const userId = authData.session?.user?.id;
-          if (userId && row.workspace_id) {
+          if (!userId) return;
+
+          // get_public_capture does NOT return workspace_id, so fetch it directly
+          // from the captures table (member-scoped, safe via RLS).
+          let wsId = row.workspace_id || null;
+          if (!wsId) {
+            const { data: wsData } = await supabase
+              .from("captures")
+              .select("workspace_id")
+              .eq("id", id)
+              .single();
+            wsId = (wsData as { workspace_id: string } | null)?.workspace_id || null;
+          }
+
+          if (wsId) {
             const { data: members } = await supabase.rpc("get_workspace_members", {
-              p_workspace_id: row.workspace_id,
+              p_workspace_id: wsId,
             });
             const memberList = (members ?? []) as { user_id: string }[];
             if (memberList.some((m) => m.user_id === userId)) {
@@ -320,10 +336,14 @@ export default function SingleViewPage() {
     }
   }
 
-  async function handleDeleteCapture() {
+  function handleDeleteCapture() {
     if (!capture) return;
-    const confirm = window.confirm(`Are you sure you want to delete "${capture.title}"?`);
-    if (!confirm) return;
+    setDeleteCaptureModalOpen(true);
+  }
+
+  async function submitDeleteCapture() {
+    if (!capture || deletingCapture) return;
+    setDeletingCapture(true);
     try {
       const { error } = await supabase.from("captures").delete().eq("id", capture.id);
       if (error) throw error;
@@ -331,6 +351,9 @@ export default function SingleViewPage() {
     } catch (err) {
       console.warn("Failed to delete capture:", err);
       alert("Could not delete capture.");
+      setDeleteCaptureModalOpen(false);
+    } finally {
+      setDeletingCapture(false);
     }
   }
 
@@ -351,6 +374,18 @@ export default function SingleViewPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {isTeamMember && (
+            <Link
+              href="/captures"
+              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-subtle flex items-center gap-1.5 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              Back to Dashboard
+            </Link>
+          )}
+
           {status === "ready" && (
             <button
               onClick={handleGenerateAiReport}
@@ -494,14 +529,14 @@ export default function SingleViewPage() {
       {status === "ready" && capture && (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[480px] lg:h-[60vh] flex items-center justify-center relative overflow-hidden">
+            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[420px] flex items-center justify-center relative overflow-hidden">
               {capture.type === "video" ? (
-                <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
+                <div className="w-full max-h-[68vh] rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
                   {!videoError ? (
                     <video
                       controls
                       onError={() => setVideoError(true)}
-                      className="w-full h-full object-contain outline-none"
+                      className="w-full h-auto max-h-[68vh] object-contain outline-none"
                       preload="metadata"
                     >
                       <source src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`} type="video/webm" />
@@ -703,6 +738,40 @@ export default function SingleViewPage() {
                 className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
                 {aiCopied ? "Copied!" : "Copy Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Capture Modal */}
+      {deleteCaptureModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteCaptureModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6 text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Delete Capture?</h2>
+            <p className="text-xs text-muted leading-relaxed mb-6">
+              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>? This cannot be undone.
+            </p>
+            
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <button
+                onClick={() => setDeleteCaptureModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitDeleteCapture}
+                disabled={deletingCapture}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deletingCapture ? "Deleting..." : "Delete Capture"}
               </button>
             </div>
           </div>

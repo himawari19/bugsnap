@@ -27,13 +27,21 @@ export default function SettingsPage() {
 
   useEffect(() => {
     // Load workspace settings
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       const u = data.session?.user;
       if (!u) return;
 
-      if (u.user_metadata?.plan) {
-        setUserPlan(u.user_metadata.plan as "free" | "pro");
+      let plan = (u.user_metadata?.plan || "free") as "free" | "pro";
+      // Prefer plan from public.users (source of truth via Stripe webhook)
+      if (u.email) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("plan")
+          .ilike("email", u.email)
+          .maybeSingle();
+        if (userRow?.plan === "pro") plan = "pro";
       }
+      setUserPlan(plan);
 
       if (activeWsId) {
         supabase

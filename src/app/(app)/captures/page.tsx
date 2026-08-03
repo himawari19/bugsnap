@@ -178,9 +178,10 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-foreground">Edit Capture</h2>
+      <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border flex flex-col max-h-[85vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <h2 className="text-base font-bold text-foreground">Edit Capture</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -192,13 +193,15 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
           </button>
         </div>
 
-        <div className="space-y-4">
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">Title</label>
+            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Title</label>
             <input className={inputClasses} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">Description</label>
+            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Description</label>
             <textarea
               className={`${inputClasses} min-h-[72px] resize-none`}
               value={description}
@@ -214,7 +217,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
             <div className="space-y-4">
               {/* Tag */}
               <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Tag</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Tag</label>
                 <select
                   className={inputClasses}
                   value={tag}
@@ -228,7 +231,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
               </div>
               {/* Status */}
               <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Status</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Status</label>
                 <select
                   className={inputClasses}
                   value={status}
@@ -240,7 +243,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Password Protection</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Password Protection</label>
                 <input
                   className={inputClasses}
                   type="text"
@@ -250,7 +253,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Expires in</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Expires in</label>
                 <div className="inline-flex rounded-lg border border-border bg-subtle p-1 w-full">
                   {EXPIRY_OPTIONS.map((opt) => (
                     <button
@@ -334,10 +337,11 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
             </div>
           </div>
         </div>
+        </div>
 
-        {error && <p className="mt-4 text-xs text-red-600">{error}</p>}
-
-        <div className="flex items-center justify-end gap-2 mt-6">
+        {/* Sticky Footer Actions */}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+          {error && <p className="mr-auto text-xs text-red-600">{error}</p>}
           <button
             onClick={onClose}
             className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle transition-colors"
@@ -404,11 +408,20 @@ function CapturesContent() {
   }, [activeHoverId]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       const u = data.session?.user;
-      if (u?.user_metadata?.plan) {
-        setUserPlan(u.user_metadata.plan as "free" | "pro");
+      if (!u) return;
+      let plan = (u.user_metadata?.plan || "free") as "free" | "pro";
+      // Prefer plan from public.users (source of truth via Stripe webhook)
+      if (u.email) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("plan")
+          .ilike("email", u.email)
+          .maybeSingle();
+        if (userRow?.plan === "pro") plan = "pro";
       }
+      setUserPlan(plan);
     });
   }, []);
 
@@ -426,13 +439,18 @@ function CapturesContent() {
   const [loadingMore, setLoadingMore] = useState(false);
   const pageRef = useRef(0);
 
+  // Explicit column list (no dev_logs) keeps the grid fast — logs are only
+  // needed on the detail page.
+  const CAPTURES_COLUMNS =
+    "id, title, type, drive_url, created_at, window_size, workspace_id, folder_name, tag, status, expires_at, password, duration, owner_email, burn_after_read";
+
   const loadPage = useCallback(
     async (pageToLoad: number, replace: boolean) => {
       const from = pageToLoad * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       let query = supabase
         .from("captures")
-        .select("*")
+        .select(CAPTURES_COLUMNS)
         .order("created_at", { ascending: false })
         .range(from, to);
       if (wsParam && wsParam !== "all") {
@@ -464,7 +482,7 @@ function CapturesContent() {
       const to = PAGE_SIZE - 1;
       let query = supabase
         .from("captures")
-        .select("*")
+        .select(CAPTURES_COLUMNS)
         .order("created_at", { ascending: false })
         .range(from, to);
       if (wsParam && wsParam !== "all") {
@@ -692,8 +710,8 @@ function CapturesContent() {
         </div>
       </div>
 
-      {/* Filter Row (Jam.dev style) */}
-      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border overflow-visible">
+      {/* Filter Row (Jam.dev style) - sticky so filters stay accessible while scrolling */}
+      <div className="sticky top-0 z-10 flex items-center gap-3 mb-6 pb-4 pt-3 border-b border-border overflow-visible bg-background/95 backdrop-blur-sm">
         <div className="relative">
           <button
             onClick={() => setTypeMenuOpen((o) => !o)}
@@ -867,14 +885,26 @@ function CapturesContent() {
                 {/* Thumbnail Container */}
                 <div className="aspect-[16/10] rounded-t-xl overflow-hidden bg-subtle flex items-center justify-center text-muted text-sm relative group-hover:bg-subtle/80 transition-colors">
                   {driveThumbUrl(item.drive_url) && !thumbFailed[item.id] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={driveThumbUrl(item.drive_url)!}
-                      alt={item.title}
-                      referrerPolicy="no-referrer"
-                      onError={() => setThumbFailed((prev) => ({ ...prev, [item.id]: true }))}
-                      className="w-full h-full object-cover"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={driveThumbUrl(item.drive_url)!}
+                        alt={item.title}
+                        referrerPolicy="no-referrer"
+                        onError={() => setThumbFailed((prev) => ({ ...prev, [item.id]: true }))}
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Play overlay for videos so the grid clearly shows what's a recording */}
+                      {item.type === "video" && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                            <svg className="w-5 h-5 text-indigo-600 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex flex-col items-center gap-1.5">
                       {item.type === "video" ? (

@@ -85,9 +85,10 @@ function DashboardContent() {
     });
 
     (async () => {
+      // Explicit column list (skip heavy dev_logs) — keeps the dashboard fast.
       let query = supabase
         .from("captures")
-        .select("*")
+        .select("id, title, type, drive_url, created_at, window_size, workspace_id, owner_email, duration")
         .order("created_at", { ascending: false });
       // Filter server-side when a workspace is active. If the workspace_id
       // column hasn't been added to the DB yet (deploy race), the .eq is a
@@ -300,7 +301,7 @@ function DashboardContent() {
               {recent.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/captures/${c.id}`}
+                  href={`/v/${c.id}`}
                   className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-subtle transition-colors"
                 >
                   <div
