@@ -143,7 +143,7 @@ export default function SingleViewPage() {
               setIsTeamMember(true);
             }
           }
-        } catch (_) {}
+        } catch {}
 
         if (bypass) {
           // Force bypass password/domain whitelists for authenticated workspace members

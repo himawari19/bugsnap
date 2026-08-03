@@ -93,10 +93,8 @@ export default function Comments({
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
 
-  // Guest/Visitor name prompt. Requires a name before the first post so
-  // anonymous comments are attributed to a person. Stored in localStorage so
-  // it persists across sessions on this browser.
-  const [authorNameText, setAuthorNameText] = useState("");
+  // Guest/Visitor name fallback stored in localStorage so comments are
+  // attributed to a person across sessions on this browser.
   const [storedAuthorName, setStoredAuthorName] = useState<string | null>(null);
 
   // Resolve the effective author name from the prop, then localStorage.
@@ -115,18 +113,6 @@ export default function Comments({
       }
     }
   }, [authorName]);
-
-  function handleSetName() {
-    const name = authorNameText.trim();
-    if (!name) return;
-    try {
-      localStorage.setItem("mazway_author_name", name);
-    } catch {
-      /* ignore storage failures */
-    }
-    setStoredAuthorName(name);
-    setAuthorNameText("");
-  }
 
   const needsName = false;
 
