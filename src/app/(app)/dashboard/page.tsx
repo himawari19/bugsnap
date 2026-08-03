@@ -13,6 +13,7 @@ interface Capture {
   created_at: string;
   window_size?: string;
   workspace_id?: string | null;
+  owner_email?: string | null;
 }
 
 function timeAgo(iso: string): string {
@@ -98,6 +99,23 @@ function DashboardContent() {
 
   const videos = wsCaptures.filter((c) => c.type === "video");
   const screenshots = wsCaptures.filter((c) => c.type === "screenshot");
+
+  // Storage usage estimate: screenshots avg 200KB, videos avg 4.5MB
+  const storageUsageMb = (screenshots.length * 0.2) + (videos.length * 4.5);
+  const storageUsageText = storageUsageMb > 1024 
+    ? `${(storageUsageMb / 1024).toFixed(1)} GB`
+    : `${storageUsageMb.toFixed(1)} MB`;
+
+  // Contributors Leaderboard
+  const contributorCounts: Record<string, number> = {};
+  wsCaptures.forEach((c) => {
+    const email = c.owner_email || "Anonymous";
+    contributorCounts[email] = (contributorCounts[email] || 0) + 1;
+  });
+  const contributors = Object.entries(contributorCounts)
+    .map(([email, count]) => ({ email, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   // This week's captures
   const now = Date.now();
@@ -195,11 +213,11 @@ function DashboardContent() {
             accent: "bg-emerald-50 text-emerald-600",
           },
           {
-            label: "This Week",
-            value: thisWeek.length,
+            label: "Storage Estimate",
+            value: storageUsageText,
             icon: (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
               </svg>
             ),
             accent: "bg-amber-50 text-amber-600",
@@ -337,12 +355,21 @@ function DashboardContent() {
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
-                Average / Day
+                Team Leaderboard
               </p>
-              <p className="text-2xl font-bold text-foreground">
-                {(wsCaptures.length / 7).toFixed(1)}
-              </p>
-              <p className="text-[11px] text-muted mt-1">captures per day (7-day window)</p>
+              <div className="space-y-2">
+                {contributors.map((c, i) => (
+                  <div key={c.email} className="flex items-center justify-between text-xs">
+                    <span className="text-muted truncate max-w-[140px]" title={c.email}>
+                      {i + 1}. {c.email.split("@")[0]}
+                    </span>
+                    <span className="font-semibold text-foreground">{c.count} caps</span>
+                  </div>
+                ))}
+                {contributors.length === 0 && (
+                  <p className="text-[11px] text-muted">No contributors yet.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

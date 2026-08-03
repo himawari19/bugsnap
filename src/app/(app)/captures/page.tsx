@@ -26,6 +26,7 @@ interface Capture {
   allowed_domains?: string[] | null;
   allowed_ips?: string[] | null;
   owner_email?: string | null;
+  folder_name?: string | null;
 }
 
 const TAG_OPTIONS = ["bug", "feature-request", "wip", "design", "other"];
@@ -367,6 +368,7 @@ export default function CapturesList() {
 function CapturesContent() {
   const searchParams = useSearchParams();
   const wsParam = searchParams.get("ws");
+  const folderParam = searchParams.get("folder");
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -436,6 +438,9 @@ function CapturesContent() {
       if (wsParam && wsParam !== "all") {
         query = query.eq("workspace_id", wsParam);
       }
+      if (folderParam) {
+        query = query.eq("folder_name", folderParam);
+      }
       const { data, error } = await query;
       if (error) {
         console.warn("Error fetching captures:", error);
@@ -446,10 +451,10 @@ function CapturesContent() {
       setCaptures((prev) => (replace ? items : [...prev, ...items]));
       setHasMore(items.length === PAGE_SIZE);
     },
-    [wsParam]
+    [wsParam, folderParam]
   );
 
-  // Initial load + reload on workspace change
+  // Initial load + reload on workspace / folder change
   useEffect(() => {
     let cancelled = false;
     pageRef.current = 0;
@@ -465,6 +470,9 @@ function CapturesContent() {
       if (wsParam && wsParam !== "all") {
         query = query.eq("workspace_id", wsParam);
       }
+      if (folderParam) {
+        query = query.eq("folder_name", folderParam);
+      }
       const { data, error } = await query;
       if (error) {
         console.warn("Error fetching captures:", error);
@@ -478,7 +486,7 @@ function CapturesContent() {
     return () => {
       cancelled = true;
     };
-  }, [wsParam]);
+  }, [wsParam, folderParam]);
 
   // IntersectionObserver: Callback Ref to safely load more when the sentinel enters the viewport
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -503,16 +511,20 @@ function CapturesContent() {
     [hasMore, loadingMore, loadPage]
   );
 
-  // Displayed captures, restricted to the active workspace when present.
-  // Client-side filter guards against the workspace_id column not existing
-  // yet on the DB — in that case captures have no workspace_id and all show.
+  // Displayed captures, restricted to the active workspace & folder when present.
+  // Client-side filter guards against the workspace_id/folder_name column not existing
+  // yet on the DB — in that case captures have no workspace_id/folder_name and all show.
   const workspaceCaptures = captures.filter(
     (c) =>
-      !wsParam ||
-      wsParam === "all" ||
-      c.workspace_id === undefined ||
-      c.workspace_id === null ||
-      c.workspace_id === wsParam
+      (!wsParam ||
+        wsParam === "all" ||
+        c.workspace_id === undefined ||
+        c.workspace_id === null ||
+        c.workspace_id === wsParam) &&
+      (!folderParam ||
+        c.folder_name === undefined ||
+        c.folder_name === null ||
+        c.folder_name === folderParam)
   );
 
   const handleCopyLink = (id: string) => {

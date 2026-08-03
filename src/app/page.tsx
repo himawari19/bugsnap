@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-
-
 
 export default function Home() {
   const [signingIn, setSigningIn] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsLoggedIn(!!data.session?.user);
+      setLoadingSession(false);
+    });
+  }, []);
 
   async function signInWithGoogle() {
     setSigningIn(true);
@@ -20,8 +28,6 @@ export default function Home() {
       });
       if (error) {
         console.warn("Google provider not enabled, falling back to Anonymous Sign-In:", error.message);
-        // Fallback to anonymous sign-in so devs/users can still test the dashboard 
-        // without Google OAuth configuration in Supabase.
         const { error: anonError } = await supabase.auth.signInAnonymously();
         if (anonError) throw anonError;
         window.location.assign("/dashboard");
@@ -34,8 +40,27 @@ export default function Home() {
     }
   }
 
+  const faqItems = [
+    {
+      q: "How does the Google Drive integration work?",
+      a: "Every recording and screenshot is stored directly in your own Google Drive. Mazway creates a private folder, uploads the media there, and generates a secure link to view it on our dashboard with attached logs. You retain 100% ownership of your files."
+    },
+    {
+      q: "Are the attached DevTools logs secure?",
+      a: "Yes. Mazway automatically redacts sensitive data like password fields, authorization headers, credit cards, and API keys at the browser level before anything is saved. Only clean diagnostic logs are stored."
+    },
+    {
+      q: "Is Mazway really free forever?",
+      a: "Yes! The core screen recorder and Google Drive storage integration is completely free. We offer paid Pro upgrades for teams needing E2EE encryption, domain whitelisting, custom watermarks, and unlimited workspace seats."
+    },
+    {
+      q: "Do my team members need the extension to view links?",
+      a: "No. Anyone you share the link with can view the recording, screenshots, and attached DevTools logs directly in their web browser. No extension download or login is required to view shared captures."
+    }
+  ];
+
   return (
-    <div className="min-h-screen bg-white text-foreground">
+    <div className="min-h-screen bg-white text-foreground font-sans">
       {/* Navbar */}
       <header className="sticky top-0 z-10 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
@@ -56,13 +81,25 @@ export default function Home() {
             </svg>
             <span className="text-lg font-bold tracking-tight">Mazway</span>
           </a>
-          <button
-            onClick={signInWithGoogle}
-            disabled={signingIn}
-            className="text-sm font-medium text-muted hover:text-foreground transition-colors disabled:opacity-60"
-          >
-            {signingIn ? "Redirecting..." : "Sign in"}
-          </button>
+          
+          {loadingSession ? (
+            <div className="w-16 h-4 bg-subtle animate-pulse rounded" />
+          ) : isLoggedIn ? (
+            <Link
+              href="/dashboard"
+              className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
+            >
+              Go to Dashboard →
+            </Link>
+          ) : (
+            <button
+              onClick={signInWithGoogle}
+              disabled={signingIn}
+              className="text-sm font-medium text-muted hover:text-foreground transition-colors disabled:opacity-60"
+            >
+              {signingIn ? "Redirecting..." : "Sign in"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -82,37 +119,48 @@ export default function Home() {
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={signInWithGoogle}
-              disabled={signingIn}
-              className="inline-flex items-center gap-2.5 rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 transition-colors"
-            >
-              {signingIn ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  Redirecting...
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 015.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A11 11 0 001 12c0 1.77.43 3.45 1.18 4.94l3.66-2.84z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
-                  </svg>
-                  Sign in with Google
-                </>
-              )}
-            </button>
+            {loadingSession ? (
+              <div className="w-48 h-10 bg-subtle animate-pulse rounded-lg" />
+            ) : isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-6 py-3 text-sm font-semibold text-white transition-colors shadow-sm"
+              >
+                Go to Dashboard
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+              </Link>
+            ) : (
+              <button
+                onClick={signInWithGoogle}
+                disabled={signingIn}
+                className="inline-flex items-center gap-2.5 rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 transition-colors"
+              >
+                {signingIn ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    Redirecting...
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 015.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A11 11 0 001 12c0 1.77.43 3.45 1.18 4.94l3.66-2.84z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+                    </svg>
+                    Sign in with Google
+                  </>
+                )}
+              </button>
+            )}
           </div>
           {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
 
           <p className="mt-6 text-xs text-muted">
-            No account yet? Sign in with Google and your captures will appear
-            instantly.
+            No credit card required. Captures are saved directly to your Google Drive folder.
           </p>
         </section>
 
@@ -226,29 +274,41 @@ export default function Home() {
           </div>
         </section>
 
+        {/* FAQ Section */}
+        <section className="border-t border-border bg-subtle/30 py-20">
+          <div className="mx-auto max-w-4xl px-6">
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center text-foreground mb-12">
+              Frequently Asked Questions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {faqItems.map((faq, i) => (
+                <div key={i} className="space-y-2">
+                  <h4 className="text-sm font-semibold text-foreground">{faq.q}</h4>
+                  <p className="text-xs text-muted leading-relaxed">{faq.a}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="border-t border-border">
           <div className="mx-auto max-w-6xl px-6 py-16 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Ready to share your first bug report?
+              Ready to speed up your QA pipeline?
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-              Install the extension, capture your screen, and send a link that
-              includes the DevTools context automatically.
+              Get the Chrome extension to record bugs with complete console & network error logs in one click.
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <button
-                onClick={signInWithGoogle}
-                disabled={signingIn}
-                className="inline-flex items-center gap-2.5 rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 transition-colors"
+                onClick={() => window.open("https://chrome.google.com/webstore", "_blank")}
+                className="inline-flex items-center gap-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
               >
-                <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 015.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A11 11 0 001 12c0 1.77.43 3.45 1.18 4.94l3.66-2.84z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                Sign in with Google
+                Install Chrome Extension
               </button>
             </div>
           </div>
@@ -256,28 +316,75 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <svg viewBox="0 0 128 128" className="w-6 h-6" aria-hidden="true">
-              <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#lgf)" />
-              <defs>
-                <linearGradient id="lgf" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#18B7E9" />
-                  <stop offset=".54" stopColor="#4C8BF0" />
-                  <stop offset="1" stopColor="#8A42E8" />
-                </linearGradient>
-              </defs>
-              <circle cx="64" cy="64" r="38" fill="#FFF" />
-              <circle cx="64" cy="64" r="28" fill="#27AEBB" />
-              <circle cx="64" cy="64" r="12" fill="#FFF" />
-              <circle cx="64" cy="64" r="5" fill="#5B61DA" />
-            </svg>
-            <span className="text-sm font-semibold">Mazway</span>
+      <footer className="border-t border-border bg-white py-12">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 pb-8 border-b border-border">
+            {/* Brand column */}
+            <div className="col-span-2 space-y-4">
+              <div className="flex items-center gap-2">
+                <svg viewBox="0 0 128 128" className="w-6 h-6" aria-hidden="true">
+                  <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#lgf)" />
+                  <defs>
+                    <linearGradient id="lgf" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#18B7E9" />
+                      <stop offset=".54" stopColor="#4C8BF0" />
+                      <stop offset="1" stopColor="#8A42E8" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="64" cy="64" r="38" fill="#FFF" />
+                  <circle cx="64" cy="64" r="28" fill="#27AEBB" />
+                  <circle cx="64" cy="64" r="12" fill="#FFF" />
+                  <circle cx="64" cy="64" r="5" fill="#5B61DA" />
+                </svg>
+                <span className="text-sm font-semibold">Mazway</span>
+              </div>
+              <p className="text-xs text-muted max-w-xs leading-relaxed">
+                The fastest way to record screen activities, capture network requests, and report website bugs with automatic DevTools logs.
+              </p>
+            </div>
+
+            {/* Links column 1 */}
+            <div className="space-y-3">
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Product</h5>
+              <ul className="space-y-2 text-xs text-muted">
+                <li><a href="#" className="hover:text-foreground transition-colors">Screen Recorder</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">DevTools Integration</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Pricing Plans</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Security Guard</a></li>
+              </ul>
+            </div>
+
+            {/* Links column 2 */}
+            <div className="space-y-3">
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Resources</h5>
+              <ul className="space-y-2 text-xs text-muted">
+                <li><a href="#" className="hover:text-foreground transition-colors">Documentation</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Chrome Extension</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Help Center</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">API Status</a></li>
+              </ul>
+            </div>
+
+            {/* Links column 3 */}
+            <div className="space-y-3">
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Company</h5>
+              <ul className="space-y-2 text-xs text-muted">
+                <li><a href="#" className="hover:text-foreground transition-colors">About Us</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Terms of Service</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">Contact</a></li>
+              </ul>
+            </div>
           </div>
-          <p className="text-xs text-muted">
-            Screen recorder for faster bug reports.
-          </p>
+
+          <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-muted">
+              &copy; {new Date().getFullYear()} Mazway. All rights reserved.
+            </p>
+            <p className="text-xs text-muted">
+              Built natively on top of Google Drive API & Supabase.
+            </p>
+          </div>
         </div>
       </footer>
     </div>

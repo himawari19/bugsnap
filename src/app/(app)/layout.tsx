@@ -41,6 +41,7 @@ export default function DashboardLayout({
   const [createWsError, setCreateWsError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [members, setMembers] = useState<Record<string, string[]>>({});
+  const [folders, setFolders] = useState<string[]>([]);
   const [session, setSession] = useState<{
     loading: boolean;
     user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
@@ -198,6 +199,39 @@ export default function DashboardLayout({
     };
   }, [session.user?.id, wsParam]);
 
+  // Load the list of unique folders for the active workspace
+  useEffect(() => {
+    if (!activeWsId) return;
+    let active = true;
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("captures")
+          .select("folder_name")
+          .eq("workspace_id", activeWsId)
+          .not("folder_name", "is", null);
+
+        if (error) throw error;
+        
+        // Deduplicate folder names
+        const uniqueFolders = Array.from(
+          new Set((data || []).map((c) => c.folder_name).filter(Boolean))
+        ) as string[];
+
+        if (active) {
+          setFolders(uniqueFolders.sort());
+        }
+      } catch (err) {
+        console.warn("Failed to load workspace folders:", err);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [activeWsId]);
+
   if (session.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -346,11 +380,27 @@ export default function DashboardLayout({
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
       <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full">
-        <div className="px-5 py-6 border-b border-border">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Mazway
-          </h1>
-          <p className="text-sm text-muted mt-0.5">Screen Recorder</p>
+        <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
+          <svg viewBox="0 0 128 128" className="w-7 h-7 shrink-0" role="img" aria-label="Mazway">
+            <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#sidebar-lg)" />
+            <defs>
+              <linearGradient id="sidebar-lg" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#18B7E9" />
+                <stop offset=".54" stopColor="#4C8BF0" />
+                <stop offset="1" stopColor="#8A42E8" />
+              </linearGradient>
+            </defs>
+            <circle cx="64" cy="64" r="38" fill="#FFF" />
+            <circle cx="64" cy="64" r="28" fill="#27AEBB" />
+            <circle cx="64" cy="64" r="12" fill="#FFF" />
+            <circle cx="64" cy="64" r="5" fill="#5B61DA" />
+          </svg>
+          <div>
+            <h1 className="text-sm font-bold tracking-tight text-foreground leading-none">
+              Mazway
+            </h1>
+            <p className="text-[10px] text-muted mt-1 leading-none font-medium">Screen Recorder</p>
+          </div>
         </div>
 
         {/* Workspace Switcher */}
@@ -524,6 +574,37 @@ export default function DashboardLayout({
               </Link>
             );
           })}
+
+          {/* Google Drive Folders List (Sync Bridge) */}
+          {folders.length > 0 && (
+            <div className="pt-4 space-y-1">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                Drive Folders
+              </p>
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {folders.map((folder) => {
+                  const isActiveFolder = typeof window !== "undefined" && new URL(window.location.href).searchParams.get("folder") === folder;
+                  return (
+                    <Link
+                      key={folder}
+                      href={`/captures?ws=${activeWsId}&folder=${encodeURIComponent(folder)}`}
+                      className={`flex items-center gap-2.5 px-3 py-1.5 text-xs rounded-lg transition-colors truncate ${
+                        isActiveFolder
+                          ? "bg-indigo-50 text-indigo-600 font-semibold"
+                          : "text-muted hover:text-foreground hover:bg-subtle"
+                      }`}
+                    >
+                      <span className="text-xs shrink-0">📁</span>
+                      <span className="truncate">{folder}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* SaaS Upgrade CTA (Free tier only) */}

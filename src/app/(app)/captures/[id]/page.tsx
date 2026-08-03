@@ -182,7 +182,7 @@ export default function CaptureDetailPage() {
   const thumbUrl = (() => { const id = driveFileId(capture.drive_url); return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null; })();
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans">
+    <div className="h-screen bg-white flex flex-col font-sans overflow-hidden">
       {/* Header */}
       <header className="h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-2 min-w-0">

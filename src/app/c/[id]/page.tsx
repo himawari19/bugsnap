@@ -322,7 +322,7 @@ export default function PublicSharePage() {
   const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans">
+    <div className="h-screen bg-white flex flex-col font-sans overflow-hidden">
       <header className="h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-2">
           {brand.logo ? (

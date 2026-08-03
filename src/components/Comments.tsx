@@ -14,6 +14,7 @@ export interface CommentRow {
   parent_id?: string | null; // thread reply support
   tag?: string | null; // e.g. bug / feature-request / wip
   status?: string | null; // e.g. open / in-progress / fixed
+  resolved?: boolean;
 }
 
 interface CommentsProps {
@@ -254,6 +255,21 @@ export default function Comments({
     }
   }
 
+  async function handleResolve(commentId: string) {
+    try {
+      const { error } = await supabase
+        .from("comments")
+        .update({ resolved: true })
+        .eq("id", commentId);
+      if (error) throw error;
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, resolved: true } : c))
+      );
+    } catch (err) {
+      console.warn("Failed to resolve comment:", err);
+    }
+  }
+
   async function handleReply(parentId: string) {
     const text = replyBody.trim();
     if (!text || replying) return;
@@ -442,6 +458,19 @@ export default function Comments({
                         >
                           Reply
                         </button>
+                        {c.resolved ? (
+                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm border border-emerald-100">
+                            ✓ Resolved
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleResolve(c.id)}
+                            className="text-[10px] font-medium text-muted hover:text-emerald-600 transition-colors"
+                          >
+                            Resolve
+                          </button>
+                        )}
                         <a
                           href={`https://github.com/new?title=${encodeURIComponent(
                             `[Capture] ${c.body.slice(0, 60)}`
@@ -458,7 +487,9 @@ export default function Comments({
                           Issue
                         </a>
                       </div>
-                      <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap break-words">
+                      <p className={`text-xs mt-0.5 whitespace-pre-wrap break-words ${
+                        c.resolved ? "text-muted line-through opacity-50" : "text-foreground"
+                      }`}>
                         {c.body}
                       </p>
 
