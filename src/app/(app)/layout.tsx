@@ -1131,7 +1131,7 @@ export default function DashboardLayout({
             </div>
             <h2 className="text-lg font-bold text-foreground mb-2">Delete Folder?</h2>
             <p className="text-xs text-muted leading-relaxed mb-6">
-              Are you sure you want to delete <span className="font-semibold text-foreground">"{folderToDelete}"</span>?<br/>
+              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{folderToDelete}&quot;</span>?<br/>
               <span className="text-red-600 font-medium">WARNING:</span> All captures inside this folder will be permanently deleted from this dashboard and Google Drive.
             </p>
             

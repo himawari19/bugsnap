@@ -100,8 +100,9 @@ export default function Comments({
   const [storedAuthorName, setStoredAuthorName] = useState<string | null>(null);
 
   // Resolve the effective author name from the prop, then localStorage.
+  // Default to "Guest" so anonymous viewers can comment instantly without a name prompt.
   const effAuthorName =
-    (authorName && authorName.trim()) || storedAuthorName || "";
+    (authorName && authorName.trim()) || storedAuthorName || "Guest";
 
   useEffect(() => {
     // Recheck the persisted name if the prop is cleared (e.g. mounting as a
@@ -127,7 +128,7 @@ export default function Comments({
     setAuthorNameText("");
   }
 
-  const needsName = !effAuthorName;
+  const needsName = false;
 
   useEffect(() => {
     let cancelled = false;
@@ -255,21 +256,6 @@ export default function Comments({
     }
   }
 
-  async function handleResolve(commentId: string) {
-    try {
-      const { error } = await supabase
-        .from("comments")
-        .update({ resolved: true })
-        .eq("id", commentId);
-      if (error) throw error;
-      setComments((prev) =>
-        prev.map((c) => (c.id === commentId ? { ...c, resolved: true } : c))
-      );
-    } catch (err) {
-      console.warn("Failed to resolve comment:", err);
-    }
-  }
-
   async function handleReply(parentId: string) {
     const text = replyBody.trim();
     if (!text || replying) return;
@@ -313,37 +299,7 @@ export default function Comments({
     <div className="space-y-3">
       {/* Composer (always visible) */}
       <div className="space-y-2 shrink-0">
-        {needsName ? (
-          <div className="space-y-2 rounded-lg border border-border bg-subtle/40 p-3">
-            <label htmlFor="comment-author-name" className="block text-xs font-medium text-foreground">
-              Enter your name to comment:
-            </label>
-            <input
-              id="comment-author-name"
-              value={authorNameText}
-              onChange={(e) => setAuthorNameText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleSetName();
-                }
-              }}
-              placeholder="Your name"
-              maxLength={80}
-              autoComplete="nickname"
-              className="w-full text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 bg-white placeholder:text-muted/70"
-            />
-            <button
-              type="button"
-              onClick={handleSetName}
-              disabled={!authorNameText.trim()}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Set Name
-            </button>
-          </div>
-        ) : (
-        <>      
+        <>
         {isVideo && (
           <div className="flex items-center gap-2">
             <input
@@ -405,7 +361,6 @@ export default function Comments({
           </button>
         </div>
       </>
-      )}
       </div>
 
       {/* List — scrolls internally so long threads never push the page
@@ -458,34 +413,6 @@ export default function Comments({
                         >
                           Reply
                         </button>
-                        {c.resolved ? (
-                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm border border-emerald-100">
-                            ✓ Resolved
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleResolve(c.id)}
-                            className="text-[10px] font-medium text-muted hover:text-emerald-600 transition-colors"
-                          >
-                            Resolve
-                          </button>
-                        )}
-                        <a
-                          href={`https://github.com/new?title=${encodeURIComponent(
-                            `[Capture] ${c.body.slice(0, 60)}`
-                          )}&body=${encodeURIComponent(
-                            `**Comment:** ${c.body}\n\n**By:** ${name}\n**At:** ${formatDate(
-                              c.created_at
-                            )}${ts != null ? `\n**Video timestamp:** ${formatTimestamp(ts)}` : ""}\n\nCapture: ${typeof window !== "undefined" ? window.location.href : ""}`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Create GitHub issue from this comment"
-                          className="text-[10px] font-medium text-muted hover:text-indigo-600 transition-colors"
-                        >
-                          Issue
-                        </a>
                       </div>
                       <p className={`text-xs mt-0.5 whitespace-pre-wrap break-words ${
                         c.resolved ? "text-muted line-through opacity-50" : "text-foreground"
@@ -538,10 +465,44 @@ export default function Comments({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-semibold text-foreground">{rName}</span>
                                 <span className="text-[10px] text-muted">{formatDate(r.created_at)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setReplyingTo(replyingTo === r.id ? null : r.id)}
+                                  className="text-[10px] font-medium text-muted hover:text-indigo-600 transition-colors"
+                                >
+                                  Reply
+                                </button>
                               </div>
                               <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap break-words">
                                 {r.body}
                               </p>
+
+                              {/* Allow replying to nested replies too */}
+                              {replyingTo === r.id && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <input
+                                    value={replyBody}
+                                    onChange={(e) => setReplyBody(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleReply(r.id);
+                                      }
+                                    }}
+                                    placeholder={`Reply to ${rName}…`}
+                                    className="flex-1 text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 bg-subtle/50"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReply(r.id)}
+                                    disabled={replying || !replyBody.trim()}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors shrink-0"
+                                  >
+                                    {replying ? "Posting…" : "Reply"}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

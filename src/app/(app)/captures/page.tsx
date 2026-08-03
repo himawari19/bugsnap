@@ -853,7 +853,7 @@ function CapturesContent() {
             const CardWrapper = (selectMode ? "div" : Link) as React.ElementType;
             const cardProps = selectMode
               ? { onClick: () => toggleSelect(item.id), className: "flex flex-col flex-1 cursor-pointer group select-none" }
-              : { href: `/captures/${item.id}`, className: "flex flex-col flex-1 group" };
+              : { href: `/v/${item.id}`, className: "flex flex-col flex-1 group" };
             return (
             <div
               key={item.id}
