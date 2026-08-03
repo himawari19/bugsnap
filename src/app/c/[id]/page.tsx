@@ -54,11 +54,6 @@ function driveFileId(driveUrl: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function drivePreviewUrl(driveUrl: string): string | null {
-  const id = driveFileId(driveUrl);
-  return id ? `https://drive.google.com/file/d/${id}/preview` : null;
-}
-
 function driveThumbUrl(driveUrl: string): string | null {
   const id = driveFileId(driveUrl);
   return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null;

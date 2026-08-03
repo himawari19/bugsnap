@@ -26,11 +26,6 @@ function driveFileId(driveUrl: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function drivePreviewUrl(driveUrl: string): string | null {
-  const id = driveFileId(driveUrl);
-  return id ? `https://drive.google.com/file/d/${id}/preview` : null;
-}
-
 export default function CaptureDetailPage() {
   const params = useParams<{ id: string }>();
   const [capture, setCapture] = useState<Capture | null>(null);
