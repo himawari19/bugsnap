@@ -316,7 +316,6 @@ export default function PublicSharePage() {
       });
   }
 
-  const previewUrl = capture?.drive_url ? drivePreviewUrl(capture.drive_url) : null;
   const thumbUrl = capture?.drive_url ? driveThumbUrl(capture.drive_url) : null;
 
   const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;

@@ -178,7 +178,6 @@ export default function CaptureDetailPage() {
     );
   }
 
-  const previewUrl = drivePreviewUrl(capture.drive_url);
   const thumbUrl = (() => { const id = driveFileId(capture.drive_url); return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null; })();
 
   return (

@@ -387,7 +387,7 @@ function DashboardContent() {
                 Team Leaderboard
               </p>
               <div className="space-y-2.5 max-h-36 overflow-y-auto pr-1">
-                {contributors.map((c, i) => (
+                {contributors.map((c) => (
                   <div key={c.email} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={`w-5 h-5 rounded-full ${getAvatarColor(c.email)} text-white text-[9px] font-bold flex items-center justify-center shrink-0`}>
