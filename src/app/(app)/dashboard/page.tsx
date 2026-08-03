@@ -16,6 +16,29 @@ interface Capture {
   owner_email?: string | null;
 }
 
+function getAvatarColor(seed: string | null | undefined): string {
+  const colors = [
+    "bg-indigo-600",
+    "bg-emerald-600",
+    "bg-rose-600",
+    "bg-amber-600",
+    "bg-violet-600",
+    "bg-teal-600",
+    "bg-fuchsia-600",
+  ];
+  let h = 0;
+  const s = seed || "";
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return colors[h % colors.length];
+}
+
+function getOwnerInitial(email: string | null | undefined): string {
+  if (!email) return "M";
+  const clean = email.replace(/[^a-zA-Z0-9]/g, "").trim();
+  const char = clean.charAt(0);
+  return (char || "M").toUpperCase();
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -311,63 +334,76 @@ function DashboardContent() {
 
       {/* Team Analytics — leaderboard by capture count (per workspace) */}
       {wsCaptures.length > 0 && (
-        <div className="mt-6 rounded-xl border border-border bg-white p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="mt-6 rounded-xl border border-border bg-white p-7">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/60">
             <h2 className="text-base font-semibold text-foreground">Team Activity</h2>
-            <span className="text-xs text-muted">All time</span>
+            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">All time</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Column 1: Capture Types */}
+            <div className="pr-4 md:border-r border-border/70 space-y-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
                 Capture Types
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">🎥 Videos</span>
-                  <span className="font-semibold text-foreground">{videos.length}</span>
+                  <span className="text-muted flex items-center gap-1.5">🎥 Videos</span>
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{videos.length}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">📷 Screenshots</span>
-                  <span className="font-semibold text-foreground">{screenshots.length}</span>
+                  <span className="text-muted flex items-center gap-1.5">📷 Screenshots</span>
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{screenshots.length}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">📝 Total captures</span>
-                  <span className="font-semibold text-foreground">{wsCaptures.length}</span>
+                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-dashed border-border/60">
+                  <span className="font-medium text-foreground">Total Captures</span>
+                  <span className="font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">{wsCaptures.length}</span>
                 </div>
               </div>
             </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+
+            {/* Column 2: Weekly Recap */}
+            <div className="pr-4 md:border-r border-border/70 space-y-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
                 This Week
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted">New captures</span>
-                  <span className="font-semibold text-foreground">{thisWeek.length}</span>
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{thisWeek.length}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted">Busiest day</span>
-                  <span className="font-semibold text-foreground">
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">
                     {days.reduce((a, b) => (b.count > a.count ? b : a), days[0]).label}
                   </span>
                 </div>
               </div>
             </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-3">
+
+            {/* Column 3: Leaderboard */}
+            <div className="space-y-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
                 Team Leaderboard
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2.5 max-h-36 overflow-y-auto pr-1">
                 {contributors.map((c, i) => (
                   <div key={c.email} className="flex items-center justify-between text-xs">
-                    <span className="text-muted truncate max-w-[140px]" title={c.email}>
-                      {i + 1}. {c.email.split("@")[0]}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-5 h-5 rounded-full ${getAvatarColor(c.email)} text-white text-[9px] font-bold flex items-center justify-center shrink-0`}>
+                        {getOwnerInitial(c.email)}
+                      </span>
+                      <span className="text-foreground font-medium truncate" title={c.email}>
+                        {c.email.split("@")[0]}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 shrink-0">
+                      {c.count} caps
                     </span>
-                    <span className="font-semibold text-foreground">{c.count} caps</span>
                   </div>
                 ))}
                 {contributors.length === 0 && (
-                  <p className="text-[11px] text-muted">No contributors yet.</p>
+                  <p className="text-xs text-muted">No contributors yet.</p>
                 )}
               </div>
             </div>

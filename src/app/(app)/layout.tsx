@@ -42,6 +42,10 @@ export default function DashboardLayout({
   const [creating, setCreating] = useState(false);
   const [members, setMembers] = useState<Record<string, string[]>>({});
   const [folders, setFolders] = useState<string[]>([]);
+  const [createFolderModalOpen, setCreateFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const [session, setSession] = useState<{
     loading: boolean;
     user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
@@ -206,18 +210,30 @@ export default function DashboardLayout({
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        // 1. Fetch folders that have captures
+        const { data: capturesData, error: capturesErr } = await supabase
           .from("captures")
           .select("folder_name")
           .eq("workspace_id", activeWsId)
           .not("folder_name", "is", null);
 
-        if (error) throw error;
+        if (capturesErr) throw capturesErr;
+
+        // 2. Fetch custom created folders in workspace
+        const { data: customFoldersData, error: customFoldersErr } = await supabase
+          .from("workspace_folders")
+          .select("name")
+          .eq("workspace_id", activeWsId);
+
+        if (customFoldersErr) throw customFoldersErr;
         
-        // Deduplicate folder names
-        const uniqueFolders = Array.from(
-          new Set((data || []).map((c) => c.folder_name).filter(Boolean))
-        ) as string[];
+        // Deduplicate folder names from both sources
+        const allFolderNames = [
+          ...(capturesData || []).map((c) => c.folder_name),
+          ...(customFoldersData || []).map((f) => f.name)
+        ].filter(Boolean) as string[];
+
+        const uniqueFolders = Array.from(new Set(allFolderNames));
 
         if (active) {
           setFolders(uniqueFolders.sort());
@@ -260,6 +276,97 @@ export default function DashboardLayout({
     .trim()
     .charAt(0)
     .toUpperCase();
+
+  const handleCreateFolder = async (name: string) => {
+    if (!name || !activeWsId || creatingFolder) return;
+    setCreatingFolder(true);
+    setCreateFolderError(null);
+    try {
+      const { error } = await supabase
+        .from("workspace_folders")
+        .insert({ workspace_id: activeWsId, name: name.trim() });
+      if (error) throw error;
+      setFolders((prev) => Array.from(new Set([...prev, name.trim()])).sort());
+      setNewFolderName("");
+      setCreateFolderModalOpen(false);
+    } catch (err) {
+      console.warn("Failed to create folder:", err);
+      setCreateFolderError("Could not create folder. Maybe it already exists?");
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const handleRenameFolder = async (currentName: string) => {
+    if (!activeWsId) return;
+    const newName = window.prompt("Rename folder to:", currentName);
+    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+
+    try {
+      // 1. Update folder name in workspace_folders table
+      const { error: folderErr } = await supabase
+        .from("workspace_folders")
+        .update({ name: newName.trim() })
+        .eq("workspace_id", activeWsId)
+        .eq("name", currentName);
+      if (folderErr) throw folderErr;
+
+      // 2. Update captures table records matching this folder
+      const { error: capErr } = await supabase
+        .from("captures")
+        .update({ folder_name: newName.trim() })
+        .eq("workspace_id", activeWsId)
+        .eq("folder_name", currentName);
+      if (capErr) throw capErr;
+
+      // 3. Update local state
+      setFolders((prev) =>
+        prev.map((f) => (f === currentName ? newName.trim() : f)).sort()
+      );
+      
+      // Redirect if current folder was active
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("folder") === currentName) {
+        router.replace(`/captures?ws=${activeWsId}&folder=${encodeURIComponent(newName.trim())}`, { scroll: false });
+      }
+    } catch (err) {
+      console.warn("Failed to rename folder:", err);
+      alert("Could not rename folder. Check connection.");
+    }
+  };
+
+  const handleDeleteFolder = async (folderName: string) => {
+    if (!activeWsId) return;
+    
+    // Popup confirmation warning all captures + files inside will be deleted
+    const confirm = window.confirm(
+      `Are you sure you want to delete "${folderName}"?\n\nWARNING: All captures inside this folder will be permanently deleted from this dashboard and Google Drive.`
+    );
+    if (!confirm) return;
+
+    try {
+      // Call postgres RPC to drop folder + captures, and add to deleted_drive_folders queue
+      const { error } = await supabase.rpc("delete_workspace_folder", {
+        p_workspace_id: activeWsId,
+        p_folder_name: folderName,
+      });
+      if (error) throw error;
+
+      // Update local state
+      setFolders((prev) => prev.filter((f) => f !== folderName));
+      
+      // Redirect to main captures if current folder was active
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("folder") === folderName) {
+        router.replace(`/captures?ws=${activeWsId}`, { scroll: false });
+      }
+
+      alert(`Folder "${folderName}" has been queued for deletion on Google Drive.`);
+    } catch (err) {
+      console.warn("Failed to delete folder:", err);
+      alert("Could not delete folder. Please try again.");
+    }
+  };
 
   const handleCreateWorkspace = async (name: string) => {
     if (!name || creating) return;
@@ -576,35 +683,91 @@ export default function DashboardLayout({
           })}
 
           {/* Google Drive Folders List (Sync Bridge) */}
-          {folders.length > 0 && (
-            <div className="pt-4 space-y-1">
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5">
+          <div className="pt-4 space-y-1">
+            <div className="flex items-center justify-between px-3 pb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
                 </svg>
-                Drive Folders
+                Folders
               </p>
-              <div className="max-h-40 overflow-y-auto space-y-0.5">
-                {folders.map((folder) => {
-                  const isActiveFolder = typeof window !== "undefined" && new URL(window.location.href).searchParams.get("folder") === folder;
-                  return (
+              <button
+                onClick={() => setCreateFolderModalOpen(true)}
+                className="text-[10px] font-bold text-indigo-600 hover:underline"
+              >
+                + Create
+              </button>
+            </div>
+            
+            <div className="max-h-40 overflow-y-auto space-y-0.5">
+              {folders.map((folder) => {
+                const isActiveFolder = typeof window !== "undefined" && new URL(window.location.href).searchParams.get("folder") === folder;
+                const activeWsRole = workspaces.find(w => w.id === activeWsId)?.role;
+                return (
+                  <div
+                    key={folder}
+                    className={`w-full flex items-center justify-between gap-1 px-1 rounded-lg group/folder transition-colors ${
+                      isActiveFolder ? "bg-indigo-50 font-semibold" : "hover:bg-subtle"
+                    }`}
+                  >
                     <Link
-                      key={folder}
                       href={`/captures?ws=${activeWsId}&folder=${encodeURIComponent(folder)}`}
-                      className={`flex items-center gap-2.5 px-3 py-1.5 text-xs rounded-lg transition-colors truncate ${
-                        isActiveFolder
-                          ? "bg-indigo-50 text-indigo-600 font-semibold"
-                          : "text-muted hover:text-foreground hover:bg-subtle"
+                      className={`flex-1 flex items-center gap-2.5 px-2 py-1.5 text-xs truncate ${
+                        isActiveFolder ? "text-indigo-600 font-semibold" : "text-muted hover:text-foreground"
                       }`}
                     >
                       <span className="text-xs shrink-0">📁</span>
                       <span className="truncate">{folder}</span>
                     </Link>
-                  );
-                })}
-              </div>
+
+                    {/* Folder Actions (Rename & Delete) — visible only for owners */}
+                    {activeWsRole === "owner" && (
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity shrink-0 pr-1">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRenameFolder(folder);
+                          }}
+                          title="Rename Folder"
+                          className="p-1 rounded text-muted hover:text-foreground hover:bg-neutral-200/50 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteFolder(folder);
+                          }}
+                          title="Delete Folder"
+                          className="p-1 rounded text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {folders.length === 0 && (
+                <div className="px-3 py-2 text-center rounded-lg border border-dashed border-border/80 mx-1 bg-subtle/30">
+                  <p className="text-[10px] text-muted">No folders yet.</p>
+                  <button
+                    onClick={() => setCreateFolderModalOpen(true)}
+                    className="text-[10px] font-semibold text-indigo-600 hover:underline mt-1"
+                  >
+                    Create a folder
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </nav>
 
         {/* SaaS Upgrade CTA (Free tier only) */}
@@ -836,6 +999,53 @@ export default function DashboardLayout({
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
               >
                 Simulate Payment & Upgrade
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Folder Modal */}
+      {createFolderModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCreateFolderModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
+            <h2 className="text-lg font-bold text-foreground mb-1">Create Folder</h2>
+            <p className="text-sm text-muted mb-5">
+              Folders are synced with your Google Drive. Captures uploaded to this folder will be organized physically under this name in your Drive.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Folder Name</label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="e.g. Eyden - Quaker"
+                className="w-full text-sm rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-white"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newFolderName.trim()) {
+                    handleCreateFolder(newFolderName.trim());
+                  }
+                }}
+              />
+              {createFolderError && (
+                <p className="text-xs text-red-600 mt-1.5">{createFolderError}</p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => setCreateFolderModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleCreateFolder(newFolderName.trim())}
+                disabled={!newFolderName.trim() || creatingFolder}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {creatingFolder ? "Creating..." : "Create Folder"}
               </button>
             </div>
           </div>

@@ -333,9 +333,23 @@ export default function CaptureDetailPage() {
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
           {/* Canvas */}
           <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-6 min-h-[380px] flex items-center justify-center">
-            {capture.type === "video" && previewUrl ? (
-              <div className="w-full aspect-video rounded-xl overflow-hidden shadow-lg bg-black">
-                <iframe src={previewUrl} className="w-full h-full" allow="autoplay; fullscreen; encrypted-media" allowFullScreen title={capture.title}/>
+            {capture.type === "video" ? (
+              <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
+                <video
+                  controls
+                  className="w-full h-full object-contain outline-none"
+                  preload="metadata"
+                >
+                  <source
+                    src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                    type="video/webm"
+                  />
+                  <source
+                    src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`}
+                    type="video/mp4"
+                  />
+                  Your browser does not support the video tag.
+                </video>
               </div>
             ) : capture.type === "screenshot" && thumbUrl ? (
               <>
