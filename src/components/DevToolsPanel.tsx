@@ -106,7 +106,7 @@ export default function DevToolsPanel({ capture }: Props) {
     md += `| **URL** | [Open link](${capture.drive_url}) |\n`;
     md += `| **OS** | ${detectedOs} |\n`;
     md += `| **Browser** | ${detectedBrowser} |\n`;
-    md += `| **Window size** | ${capture.window_size || "—"} |\n`;
+    md += `| **Window size** | ${capture.window_size || "-"} |\n`;
     md += `| **Recorded at** | ${createdAt} |\n\n`;
 
     if (consoleLogs.length > 0) {
@@ -295,7 +295,7 @@ export default function DevToolsPanel({ capture }: Props) {
                     </svg>
                   ),
                   label: "Window size",
-                  value: capture.window_size || "—",
+                  value: capture.window_size || "-",
                 },
               ].map((row) => (
                 <div key={row.label} className="flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-0">

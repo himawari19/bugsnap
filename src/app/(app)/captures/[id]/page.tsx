@@ -83,7 +83,7 @@ export default function CaptureDetailPage() {
       ``,
       `- **Type:** ${capture.type}`,
       `- **Created:** ${new Date(capture.created_at).toLocaleString()}`,
-      `- **Window:** ${capture.window_size || "—"}`,
+      `- **Window:** ${capture.window_size || "-"}`,
       `- **Capture:** ${window.location.href}`,
       ``,
       `## Console (${consoleErrors.length})`,
