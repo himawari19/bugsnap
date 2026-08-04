@@ -894,7 +894,7 @@ function CapturesContent() {
                         className="w-full h-full object-cover"
                       />
                       {/* Play overlay for videos so the grid clearly shows what's a recording */}
-                      {item.type === "video" && (
+                      {item.type === "video" ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition-colors">
                           <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                             <svg className="w-5 h-5 text-indigo-600 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -902,6 +902,8 @@ function CapturesContent() {
                             </svg>
                           </div>
                         </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors" />
                       )}
                     </>
                   ) : (
