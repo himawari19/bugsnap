@@ -72,16 +72,24 @@ export default function DashboardLayout({
   const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [newCommentCount, setNewCommentCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifLastSeen, setNotifLastSeen] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem("mazway_notif_last_seen") || 0);
+    } catch {
+      return 0;
+    }
+  });
 
   // In-app notification: count comments on this user's captures posted
-  // within the last 24h. Polled lightly; realtime could replace this later.
+  // after last-seen (or within the last 7 days if never seen).
   useEffect(() => {
     const email = session.user?.email;
     if (!email) return;
     let cancelled = false;
     const poll = async () => {
       try {
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const lastSeenMs = notifLastSeen || Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const since = new Date(lastSeenMs).toISOString();
         const { data: mine } = await supabase
           .from("captures")
           .select("id")
@@ -99,7 +107,18 @@ export default function DashboardLayout({
     poll();
     const t = setInterval(poll, 60_000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [session.user?.email]);
+  }, [session.user?.email, notifLastSeen]);
+
+  // Mark all notifications as read
+  const handleClearNotifications = () => {
+    const now = Date.now();
+    setNotifLastSeen(now);
+    setNewCommentCount(0);
+    setNotifOpen(false);
+    try {
+      localStorage.setItem("mazway_notif_last_seen", String(now));
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     let active = true;
@@ -478,7 +497,7 @@ export default function DashboardLayout({
     }
   };
 
-  const handleDeleteWorkspace = (id: string, name: string) => {
+  const handleDeleteWorkspace = (id: string) => {
     if (workspaces.length <= 1) {
       alert("You must keep at least one workspace.");
       return;
@@ -597,23 +616,30 @@ export default function DashboardLayout({
                 {/* Click-catcher that closes the dropdown without blocking page scroll */}
                 <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} onWheel={() => setNotifOpen(false)} />
                 <div className="fixed left-4 top-16 z-50 w-64 rounded-xl border border-border bg-white shadow-xl py-2 px-1">
-                  <div className="px-3 py-1 mb-1">
+                  <div className="flex items-center justify-between px-3 py-1 mb-1">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Notifications</p>
+                    {newCommentCount > 0 && (
+                      <button
+                        onClick={handleClearNotifications}
+                        className="text-[10px] font-semibold text-indigo-600 hover:underline"
+                      >
+                        Clear all
+                      </button>
+                    )}
                   </div>
                   {newCommentCount > 0 ? (
                     <div
                       className="px-3 py-2 text-xs text-foreground cursor-pointer hover:bg-subtle rounded-lg transition-colors"
                       onClick={() => {
-                        setNotifOpen(false);
-                        setNewCommentCount(0);
+                        handleClearNotifications();
                         router.push("/captures");
                       }}
                     >
-                      <p className="font-medium">💬 {newCommentCount} new comment{newCommentCount > 1 ? "s" : ""} on your captures in the last 24h</p>
+                      <p className="font-medium">💬 {newCommentCount} new comment{newCommentCount > 1 ? "s" : ""} on your captures</p>
                     </div>
                   ) : (
                     <div className="px-3 py-4 text-center">
-                      <p className="text-xs text-muted">No new notifications</p>
+                      <p className="text-xs text-muted/60">No new notifications</p>
                     </div>
                   )}
                 </div>
@@ -695,7 +721,7 @@ export default function DashboardLayout({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteWorkspace(ws.id, ws.name);
+                            handleDeleteWorkspace(ws.id);
                           }}
                           title="Delete Workspace"
                           className="p-1 rounded text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
