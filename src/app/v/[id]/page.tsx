@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import DevToolsPanel, { DevLog } from "@/components/DevToolsPanel";
 import Comments from "@/components/Comments";
+import MediaViewer from "@/components/MediaViewer";
 
 interface Capture {
   id: string;
@@ -31,16 +32,6 @@ interface Capture {
 const TAG_OPTIONS = ["bug", "feature-request", "wip", "design", "other"];
 const STATUS_OPTIONS = ["open", "in-progress", "fixed", "closed"];
 
-function driveFileId(driveUrl: string): string | null {
-  const m = driveUrl.match(/[?&]id=([^&]+)/) || driveUrl.match(/\/d\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-function driveThumbUrl(driveUrl: string): string | null {
-  const id = driveFileId(driveUrl);
-  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null;
-}
-
 function getExpiryCountdown(expiresAt: string): string {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return "Expired";
@@ -60,7 +51,6 @@ export default function SingleViewPage() {
 
   const [capture, setCapture] = useState<Capture | null>(null);
   const [status, setStatus] = useState<"loading" | "locked" | "expired" | "notfound" | "unauthorized_ip" | "needs_login" | "unauthorized_domain" | "ready">("loading");
-  const [thumbFailed, setThumbFailed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
   const [checkingPassword, setCheckingPassword] = useState(false);
@@ -69,7 +59,6 @@ export default function SingleViewPage() {
 
   // Modals & Popovers
   const [moreOpen, setMoreOpen] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aiModal, setAiModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -79,8 +68,6 @@ export default function SingleViewPage() {
   const [embedCopied, setEmbedCopied] = useState(false);
   const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
   const [deletingCapture, setDeletingCapture] = useState(false);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState("");
 
   // Edit / Delete for internal workspace members
   const [isTeamMember, setIsTeamMember] = useState(false);
@@ -376,7 +363,6 @@ export default function SingleViewPage() {
     }
   }
 
-  const thumbUrl = capture?.drive_url ? driveThumbUrl(capture.drive_url) : null;
   const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
   return (
@@ -550,52 +536,7 @@ export default function SingleViewPage() {
       {status === "ready" && capture && (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-4 sm:p-6 h-[360px] md:h-[420px] lg:h-[55vh] xl:h-[60vh] flex items-center justify-center relative overflow-hidden">
-              {capture.type === "video" ? (
-                <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
-                  {!videoError ? (
-                    <video
-                      controls
-                      onError={() => setVideoError(true)}
-                      className="w-full h-full object-contain outline-none"
-                      preload="metadata"
-                    >
-                      <source src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`} type="video/webm" />
-                      <source src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  ) : (
-                    <iframe
-                      src={`https://drive.google.com/file/d/${driveFileId(capture.drive_url || "")}/preview`}
-                      className="w-full h-full border-none"
-                      allow="autoplay; fullscreen; encrypted-media"
-                      allowFullScreen
-                      title={capture.title}
-                    />
-                  )}
-                </div>
-              ) : capture.type === "screenshot" && thumbUrl && !thumbFailed ? (
-                <button
-                  type="button"
-                  onClick={() => { setLightboxSrc(thumbUrl); setLightboxOpen(true); }}
-                  className="w-full h-full flex items-center justify-center cursor-zoom-in outline-none group"
-                  aria-label="Open image in fullscreen"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumbUrl}
-                    alt={capture.title}
-                    referrerPolicy="no-referrer"
-                    onError={() => setThumbFailed(true)}
-                    className="max-w-full max-h-full w-auto h-auto object-contain rounded-xl shadow-md border border-border/40 transition-transform group-hover:scale-[1.005]"
-                  />
-                </button>
-              ) : (
-                <div className="text-center text-muted py-16">
-                  <p className="text-sm">Preview unavailable</p>
-                </div>
-              )}
-            </div>
+            <MediaViewer type={capture.type} driveUrl={capture.drive_url} title={capture.title} />
 
             {/* Title + Comments */}
             <div className="border border-border/80 rounded-xl p-4 bg-white space-y-4">
@@ -809,32 +750,6 @@ export default function SingleViewPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Lightbox Image Preview Modal */}
-      {lightboxOpen && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-6 cursor-zoom-out"
-          onClick={() => setLightboxOpen(false)}
-        >
-          <button
-            onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors p-2"
-            aria-label="Close image preview"
-          >
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxSrc}
-            alt={capture?.title || "Capture preview"}
-            referrerPolicy="no-referrer"
-            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
         </div>
       )}
     </div>
