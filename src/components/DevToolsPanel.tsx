@@ -2,26 +2,40 @@
 
 import { useState } from "react";
 
-export interface ConsoleLog {
+interface TimedLog {
+  time?: string;
+  timestamp?: string;
+  count?: number;
+}
+export interface ConsoleLog extends TimedLog {
   type: "console";
   level?: string;
-  time?: string;
   message?: string;
   text?: string;
 }
-export interface NetworkLog {
+export interface NetworkLog extends TimedLog {
   type: "network";
+  level?: string;
   method?: string;
   status?: number;
   resourceType?: string;
   url?: string;
 }
-export interface ActionLog {
+export interface ActionLog extends TimedLog {
   type: "step";
-  time?: string;
   message?: string;
 }
-export type DevLog = ConsoleLog | NetworkLog | ActionLog;
+export interface NavigationLog extends TimedLog {
+  type: "navigation";
+  message?: string;
+  url?: string;
+}
+export interface ScreenshotLog extends TimedLog {
+  type: "screenshot";
+  message?: string;
+  url?: string;
+}
+export type DevLog = ConsoleLog | NetworkLog | ActionLog | NavigationLog | ScreenshotLog;
 
 // Metadata is read as flat top-level capture fields (`os`, `browser`),
 // matching how the extension stores them as columns on captures.
@@ -40,6 +54,40 @@ interface Props {
 
 const TABS = ["Info", "Console", "Network", "Actions"] as const;
 type Tab = typeof TABS[number];
+type Grouped<T> = { log: T; count: number };
+
+function normalizeText(value?: string) {
+  return (value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeLevel(level?: string) {
+  const normalized = normalizeText(level) || "error";
+  return normalized === "warning" ? "warn" : normalized;
+}
+
+function canonicalUrl(value?: string) {
+  return (value || "").split("#", 1)[0];
+}
+
+function logCount(log: TimedLog) {
+  return Math.max(1, Number(log.count) || 1);
+}
+
+function totalLogCount(items: TimedLog[]) {
+  return items.reduce((total, log) => total + logCount(log), 0);
+}
+
+function groupBy<T extends TimedLog>(items: T[], keyFor: (item: T) => string, mapItem?: (item: T) => T): Grouped<T>[] {
+  const groups = new Map<string, Grouped<T>>();
+  items.forEach((item) => {
+    const key = keyFor(item);
+    const existing = groups.get(key);
+    const itemCount = logCount(item);
+    if (existing) existing.count += itemCount;
+    else groups.set(key, { log: mapItem ? mapItem(item) : item, count: itemCount });
+  });
+  return Array.from(groups.values());
+}
 
 export default function DevToolsPanel({ capture }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("Info");
@@ -48,28 +96,29 @@ export default function DevToolsPanel({ capture }: Props) {
 
   const logs = Array.isArray(capture.dev_logs) ? capture.dev_logs : [];
   
-  const consoleLogs = logs
-    .filter((l): l is ConsoleLog => l.type === "console")
-    .filter((l) => {
-      const msg = (l.message || l.text || "").toLowerCase();
-      const matchesQuery = !logSearch || msg.includes(logSearch.toLowerCase());
-      const isError = l.level !== "warn" && l.level !== "warning";
-      const matchesError = !showErrorsOnly || isError;
-      return matchesQuery && matchesError;
-    });
-
   const networkLogs = logs
     .filter((l): l is NetworkLog => l.type === "network")
+    .filter((l) => !l.status || l.status >= 400 || ["warn", "warning", "error"].includes(normalizeLevel(l.level)))
     .filter((l) => {
       const matchesQuery = !logSearch || (l.url || "").toLowerCase().includes(logSearch.toLowerCase());
-      const isErr = !l.status || l.status >= 400;
+      const isErr = normalizeLevel(l.level) === "error" || !l.status || l.status >= 500;
       const matchesError = !showErrorsOnly || isErr;
       return matchesQuery && matchesError;
     });
 
-  const actionLogs  = logs
-    .filter((l): l is ActionLog  => l.type === "step")
-    .filter((l) => !logSearch || (l.message || "").toLowerCase().includes(logSearch.toLowerCase()));
+  const eventTime = (log: TimedLog) => log.time || log.timestamp || "";
+  // The producer already coalesces short bursts in `count`; keep each emitted event
+  // separate so repeats across navigation or later in the recording retain chronology.
+  const diagnosticLogs = logs
+    .filter((log) => ["navigation", "network", "console", "screenshot"].includes(log.type));
+  const actionLogs = logs
+    .filter((l): l is ActionLog | NavigationLog => l.type === "step" || l.type === "navigation")
+    .filter((l) => !logSearch || `${l.message || ""} ${"url" in l ? l.url || "" : ""}`.toLowerCase().includes(logSearch.toLowerCase()));
+  const groupedNetworkLogs = groupBy(
+    networkLogs,
+    (log) => `${(log.method || "GET").toUpperCase()}\u0000${log.status ?? "FAILED"}\u0000${canonicalUrl(log.url)}`,
+    (log) => ({ ...log, url: canonicalUrl(log.url) }),
+  );
 
   // Format like: "July 8, 2026 at 4:55 PM GMT+7"
   const createdAt = new Date(capture.created_at).toLocaleString("en-US", {
@@ -110,26 +159,29 @@ export default function DevToolsPanel({ capture }: Props) {
     md += `| **Window size** | ${capture.window_size || "-"} |\n`;
     md += `| **Recorded at** | ${createdAt} |\n\n`;
 
-    if (consoleLogs.length > 0) {
-      md += `### 🛑 Console Logs (${consoleLogs.length})\n\`\`\`bash\n`;
-      consoleLogs.forEach((log) => {
-        md += `[${(log.level || "ERROR").toUpperCase()}] ${log.time || ""} ${log.message || log.text || ""}\n`;
+    if (diagnosticLogs.length > 0) {
+      md += `### Diagnostic Timeline (${totalLogCount(diagnosticLogs)})\n\`\`\`text\n`;
+      diagnosticLogs.forEach((log) => {
+        const detail = log.type === "network"
+          ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
+          : log.type === "console" ? log.message || log.text || "" : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
+        md += `[${log.type.toUpperCase()}] ${eventTime(log)} ${detail}${(log.count || 1) > 1 ? ` ×${log.count}` : ""}\n`;
       });
       md += `\`\`\`\n\n`;
     }
 
     if (networkLogs.length > 0) {
-      md += `### 🌐 Network Errors (${networkLogs.length})\n| Method | Status | Type | URL |\n| :--- | :--- | :--- | :--- |\n`;
-      networkLogs.forEach((log) => {
-        md += `| ${log.method || "GET"} | ${log.status || "FAILED"} | ${log.resourceType || "xhr"} | ${log.url || ""} |\n`;
+      md += `### 🌐 Network Errors (${totalLogCount(networkLogs)})\n| Method | Status | Type | URL |\n| :--- | :--- | :--- | :--- |\n`;
+      groupedNetworkLogs.forEach(({ log, count }) => {
+        md += `| ${log.method || "GET"} | ${log.status || "FAILED"} | ${log.resourceType || "xhr"} | ${log.url || ""}${count > 1 ? ` ×${count}` : ""} |\n`;
       });
       md += `\n`;
     }
 
     if (actionLogs.length > 0) {
-      md += `### 🖱️ User Actions Timeline\n`;
+      md += `### User Actions Timeline\n`;
       actionLogs.forEach((log) => {
-        md += `- **${log.time || ""}**: ${log.message || ""}\n`;
+        md += `- **${eventTime(log)}**: ${log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}\n`;
       });
       md += `\n`;
     }
@@ -140,9 +192,9 @@ export default function DevToolsPanel({ capture }: Props) {
   }
 
   const tabLabel = (t: Tab) => {
-    if (t === "Console" && consoleLogs.length) return `Console (${consoleLogs.length})`;
-    if (t === "Network" && networkLogs.length) return `Network (${networkLogs.length})`;
-    if (t === "Actions" && actionLogs.length)  return `Actions (${actionLogs.length})`;
+    if (t === "Console" && diagnosticLogs.length) return `Console (${totalLogCount(diagnosticLogs)})`;
+    if (t === "Network" && networkLogs.length) return `Network (${totalLogCount(networkLogs)})`;
+    if (t === "Actions" && actionLogs.length)  return `Actions (${totalLogCount(actionLogs)})`;
     return t;
   };
 
@@ -152,7 +204,7 @@ export default function DevToolsPanel({ capture }: Props) {
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-foreground">DevTools</span>
         <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-          {logs.length} events
+          {totalLogCount(logs)} events
         </span>
       </div>
 
@@ -317,7 +369,7 @@ export default function DevToolsPanel({ capture }: Props) {
         {/* CONSOLE TAB */}
         {activeTab === "Console" && (
           <div className="p-3 space-y-1.5">
-            {consoleLogs.length === 0 ? (
+            {diagnosticLogs.length === 0 ? (
               <div className="py-14 flex flex-col items-center gap-2 text-muted">
                 <svg className="w-8 h-8 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -325,23 +377,21 @@ export default function DevToolsPanel({ capture }: Props) {
                 <p className="text-xs">No console errors recorded</p>
               </div>
             ) : (
-              consoleLogs.map((log, i) => {
-                const isWarn = log.level === "warn" || log.level === "warning";
+              diagnosticLogs.map((log, i) => {
+                const isWarn = log.type === "network" ? log.status !== undefined && log.status < 500 : log.type === "console" && normalizeLevel(log.level) === "warn";
+                const detail = log.type === "network" ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
+                  : log.type === "console" ? log.message || log.text || ""
+                  : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
                 return (
                   <div key={i} className={`rounded-lg border px-3 py-2 text-xs font-mono ${
-                    isWarn
-                      ? "bg-amber-50 border-amber-100 text-amber-900"
-                      : "bg-red-50 border-red-100 text-red-900"
+                    log.type === "navigation" || log.type === "screenshot" ? "bg-subtle border-border text-foreground" : isWarn ? "bg-amber-50 border-amber-100 text-amber-900" : "bg-red-50 border-red-100 text-red-900"
                   }`}>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        isWarn ? "bg-amber-200 text-amber-800" : "bg-red-200 text-red-800"
-                      }`}>
-                        {isWarn ? "WARN" : "ERROR"}
-                      </span>
-                      {log.time && <span className="text-[10px] text-muted font-sans">{log.time}</span>}
+                      <span className="text-[9px] font-bold uppercase bg-black/10 px-1.5 py-0.5 rounded">{log.type}</span>
+                      {eventTime(log) && <span className="text-[10px] text-muted font-sans">{eventTime(log)}</span>}
+                      {(log.count || 1) > 1 && <span className="ml-auto text-[9px] font-bold bg-black/10 px-1.5 py-0.5 rounded">×{log.count}</span>}
                     </div>
-                    <p className="break-all leading-relaxed">{log.message || log.text || ""}</p>
+                    <p className="break-all leading-relaxed">{detail}</p>
                   </div>
                 );
               })
@@ -360,7 +410,7 @@ export default function DevToolsPanel({ capture }: Props) {
                 <p className="text-xs">No network errors recorded</p>
               </div>
             ) : (
-              networkLogs.map((log, i) => {
+              groupedNetworkLogs.map(({ log, count }, i) => {
                 const isErr = !log.status || log.status >= 400;
                 let domain = "";
                 let path = log.url || "";
@@ -382,6 +432,7 @@ export default function DevToolsPanel({ capture }: Props) {
                         {log.resourceType && (
                           <span className="text-[9px] text-muted">{log.resourceType}</span>
                         )}
+                        {count > 1 && <span className="text-[9px] font-bold bg-black/10 px-1.5 py-0.5 rounded">×{count}</span>}
                       </div>
                       <button
                         onClick={() => {
@@ -452,9 +503,9 @@ export default function DevToolsPanel({ capture }: Props) {
                         </div>
                         <div className="flex-1 pb-3">
                           <div className="flex items-center gap-2">
-                            {log.time && <span className="text-[10px] text-muted font-mono">{log.time}</span>}
+                            {eventTime(log) && <span className="text-[10px] text-muted font-mono">{eventTime(log)}</span>}
                           </div>
-                          <p className="text-xs text-foreground leading-relaxed">{log.message || ""}</p>
+                          <p className="text-xs text-foreground leading-relaxed">{log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}</p>
                         </div>
                       </div>
                     );

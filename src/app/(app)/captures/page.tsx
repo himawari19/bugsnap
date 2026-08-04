@@ -21,7 +21,7 @@ interface Capture {
   duration?: number | null;
   tag?: string | null;
   status?: string | null;
-  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string }[] | null;
+  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string; count?: number }[] | null;
   burn_after_read?: boolean;
   allowed_domains?: string[] | null;
   allowed_ips?: string[] | null;
@@ -101,9 +101,9 @@ function driveThumbUrl(driveUrl: string, size = 400): string | null {
 
 function consoleErrorCount(item: Capture): number {
   if (!Array.isArray(item.dev_logs)) return 0;
-  return item.dev_logs.filter(
-    (l) => l.type === "console" && l.level !== "warn" && l.level !== "warning"
-  ).length;
+  return item.dev_logs
+    .filter((l) => l.type === "console" && l.level !== "warn" && l.level !== "warning")
+    .reduce((total, log) => total + Math.max(1, Number(log.count) || 1), 0);
 }
 
 function expiryToOption(expiresAt: string | null | undefined, createdAt: string): string {

@@ -538,7 +538,7 @@ export default function SingleViewPage() {
       {status === "ready" && capture && (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-4 sm:p-6 min-h-[360px] md:min-h-[420px] lg:h-[55vh] xl:h-[60vh] flex items-center justify-center relative overflow-hidden">
+            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-4 sm:p-6 h-[360px] md:h-[420px] lg:h-[55vh] xl:h-[60vh] flex items-center justify-center relative overflow-hidden">
               {capture.type === "video" ? (
                 <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
                   {!videoError ? (
@@ -566,7 +566,7 @@ export default function SingleViewPage() {
                 <button
                   type="button"
                   onClick={() => { setLightboxSrc(thumbUrl); setLightboxOpen(true); }}
-                  className="block cursor-zoom-in outline-none group"
+                  className="w-full h-full flex items-center justify-center cursor-zoom-in outline-none group"
                   aria-label="Open image in fullscreen"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -575,7 +575,7 @@ export default function SingleViewPage() {
                     alt={capture.title}
                     referrerPolicy="no-referrer"
                     onError={() => setThumbFailed(true)}
-                    className="max-w-full max-h-[70vh] w-auto object-contain rounded-xl shadow-md border border-border/40 transition-transform group-hover:scale-[1.005]"
+                    className="max-w-full max-h-full w-auto h-auto object-contain rounded-xl shadow-md border border-border/40 transition-transform group-hover:scale-[1.005]"
                   />
                 </button>
               ) : (
