@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import DevToolsPanel, { DevLog } from "@/components/DevToolsPanel";
 import Comments from "@/components/Comments";
+import MediaViewer from "@/components/MediaViewer";
 
 interface Capture {
   id: string;
@@ -31,16 +32,6 @@ interface Capture {
 const TAG_OPTIONS = ["bug", "feature-request", "wip", "design", "other"];
 const STATUS_OPTIONS = ["open", "in-progress", "fixed", "closed"];
 
-function driveFileId(driveUrl: string): string | null {
-  const m = driveUrl.match(/[?&]id=([^&]+)/) || driveUrl.match(/\/d\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-function driveThumbUrl(driveUrl: string): string | null {
-  const id = driveFileId(driveUrl);
-  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1200` : null;
-}
-
 function getExpiryCountdown(expiresAt: string): string {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return "Expired";
@@ -60,7 +51,6 @@ export default function SingleViewPage() {
 
   const [capture, setCapture] = useState<Capture | null>(null);
   const [status, setStatus] = useState<"loading" | "locked" | "expired" | "notfound" | "unauthorized_ip" | "needs_login" | "unauthorized_domain" | "ready">("loading");
-  const [thumbFailed, setThumbFailed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
   const [checkingPassword, setCheckingPassword] = useState(false);
@@ -69,7 +59,6 @@ export default function SingleViewPage() {
 
   // Modals & Popovers
   const [moreOpen, setMoreOpen] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aiModal, setAiModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -78,12 +67,15 @@ export default function SingleViewPage() {
   const [embedModal, setEmbedModal] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
   const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
   const [deletingCapture, setDeletingCapture] = useState(false);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState("");
+  const [deleteCaptureError, setDeleteCaptureError] = useState<string | null>(null);
+  const [driveNotConnected, setDriveNotConnected] = useState(false);
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
 
   // Edit / Delete for internal workspace members
   const [isTeamMember, setIsTeamMember] = useState(false);
+  const [isWorkspaceOwner, setIsWorkspaceOwner] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -93,6 +85,7 @@ export default function SingleViewPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const [viewerEmail, setViewerEmail] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [brand, setBrand] = useState({ name: "mazway", logo: "", hideWatermark: false });
 
   // 1. Initial Access Check (Non-Login default)
@@ -119,9 +112,15 @@ export default function SingleViewPage() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user?.email && !cancelled) {
-        setViewerEmail(data.session.user.email);
-      }
+      if (cancelled) return;
+      setIsAuthenticated(!!data.session?.user);
+      setViewerEmail(data.session?.user?.email ?? null);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      setIsAuthenticated(!!session?.user);
+      setViewerEmail(session?.user?.email ?? null);
     });
 
     supabase
@@ -154,10 +153,12 @@ export default function SingleViewPage() {
             const { data: members } = await supabase.rpc("get_workspace_members", {
               p_workspace_id: wsId,
             });
-            const memberList = (members ?? []) as { user_id: string }[];
-            if (memberList.some((m) => m.user_id === userId)) {
+            const memberList = (members ?? []) as { user_id: string; role?: string }[];
+            const currentMember = memberList.find((member) => member.user_id === userId);
+            if (currentMember) {
               bypass = true;
               setIsTeamMember(true);
+              setIsWorkspaceOwner(currentMember.role === "owner");
             }
           }
           }
@@ -210,7 +211,10 @@ export default function SingleViewPage() {
       if (!cancelled && data != null) setViewCount(Number(data));
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
   }, [id]);
 
   // 2. View Tracking Effect
@@ -346,27 +350,52 @@ export default function SingleViewPage() {
   }
 
   function handleDeleteCapture() {
-    if (!capture) return;
+    if (!capture || !isWorkspaceOwner) return;
+    setDeleteMode("drive_trash");
+    setDeleteCaptureError(null);
+    setDriveNotConnected(false);
+    setDeleteOperationId(crypto.randomUUID());
     setDeleteCaptureModalOpen(true);
   }
 
   async function submitDeleteCapture() {
-    if (!capture || deletingCapture) return;
+    if (!capture || !isWorkspaceOwner || deletingCapture || !deleteOperationId) return;
     setDeletingCapture(true);
+    setDeleteCaptureError(null);
+    setDriveNotConnected(false);
     try {
-      const { error } = await supabase.from("captures").delete().eq("id", capture.id);
-      if (error) throw error;
-      router.push("/captures");
+      const { data, error } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (error || !token) throw new Error("Sign in again to delete this capture.");
+
+      const response = await fetch("/api/google-drive/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ captureIds: [capture.id], mode: deleteMode, operationId: deleteOperationId }),
+      });
+      const result = await response.json().catch(() => ({})) as {
+        results?: Array<{ captureId: string; ok: boolean; error?: string }>;
+        error?: string;
+      };
+      const captureResult = result.results?.find((item) => item.captureId === capture.id);
+      if (captureResult?.ok) {
+        setDeleteCaptureModalOpen(false);
+        setDeleteOperationId(null);
+        router.push("/captures");
+        return;
+      }
+
+      const isDriveNotConnected = response.status === 409 || /drive.*not connected/i.test(result.error || "");
+      if (isDriveNotConnected) setDriveNotConnected(true);
+      throw new Error(captureResult?.error || result.error || "Could not delete this capture. Please try again.");
     } catch (err) {
       console.warn("Failed to delete capture:", err);
-      alert("Could not delete capture.");
-      setDeleteCaptureModalOpen(false);
+      setDeleteCaptureError(err instanceof Error ? err.message : "Could not delete this capture. Please try again.");
     } finally {
       setDeletingCapture(false);
     }
   }
 
-  const thumbUrl = capture?.drive_url ? driveThumbUrl(capture.drive_url) : null;
   const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
   return (
@@ -432,28 +461,30 @@ export default function SingleViewPage() {
                     </button>
                   )}
                   {isTeamMember && (
-                    <>
-                      <button
-                        onClick={() => { openEditModal(); setMoreOpen(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 font-semibold rounded-lg transition-colors"
-                      >
-                        Edit Capture
-                      </button>
-                      <button
-                        onClick={() => { handleDeleteCapture(); setMoreOpen(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold rounded-lg transition-colors"
-                      >
-                        Delete Capture
-                      </button>
-                    </>
+                    <button
+                      onClick={() => { openEditModal(); setMoreOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 font-semibold rounded-lg transition-colors"
+                    >
+                      Edit Capture
+                    </button>
                   )}
-                  <a
-                    href="/"
-                    onClick={() => setMoreOpen(false)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
-                  >
-                    Login
-                  </a>
+                  {isWorkspaceOwner && (
+                    <button
+                      onClick={() => { handleDeleteCapture(); setMoreOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold rounded-lg transition-colors"
+                    >
+                      Delete Capture
+                    </button>
+                  )}
+                  {isAuthenticated === false && (
+                    <a
+                      href="/"
+                      onClick={() => setMoreOpen(false)}
+                      className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
+                    >
+                      Login
+                    </a>
+                  )}
                 </div>
               </>
             )}
@@ -538,52 +569,7 @@ export default function SingleViewPage() {
       {status === "ready" && capture && (
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-            <div className="bg-[#f4f4f6] border border-border/70 rounded-2xl p-4 sm:p-6 min-h-[360px] md:min-h-[420px] lg:h-[55vh] xl:h-[60vh] flex items-center justify-center relative overflow-hidden">
-              {capture.type === "video" ? (
-                <div className="w-full h-full rounded-xl overflow-hidden shadow-lg bg-black flex items-center justify-center">
-                  {!videoError ? (
-                    <video
-                      controls
-                      onError={() => setVideoError(true)}
-                      className="w-full h-full object-contain outline-none"
-                      preload="metadata"
-                    >
-                      <source src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`} type="video/webm" />
-                      <source src={`https://drive.google.com/uc?id=${driveFileId(capture.drive_url || "")}&export=download`} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  ) : (
-                    <iframe
-                      src={`https://drive.google.com/file/d/${driveFileId(capture.drive_url || "")}/preview`}
-                      className="w-full h-full border-none"
-                      allow="autoplay; fullscreen; encrypted-media"
-                      allowFullScreen
-                      title={capture.title}
-                    />
-                  )}
-                </div>
-              ) : capture.type === "screenshot" && thumbUrl && !thumbFailed ? (
-                <button
-                  type="button"
-                  onClick={() => { setLightboxSrc(thumbUrl); setLightboxOpen(true); }}
-                  className="block cursor-zoom-in outline-none group"
-                  aria-label="Open image in fullscreen"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumbUrl}
-                    alt={capture.title}
-                    referrerPolicy="no-referrer"
-                    onError={() => setThumbFailed(true)}
-                    className="max-w-full max-h-[70vh] w-auto object-contain rounded-xl shadow-md border border-border/40 transition-transform group-hover:scale-[1.005]"
-                  />
-                </button>
-              ) : (
-                <div className="text-center text-muted py-16">
-                  <p className="text-sm">Preview unavailable</p>
-                </div>
-              )}
-            </div>
+            <MediaViewer type={capture.type} driveUrl={capture.drive_url} title={capture.title} />
 
             {/* Title + Comments */}
             <div className="border border-border/80 rounded-xl p-4 bg-white space-y-4">
@@ -596,23 +582,8 @@ export default function SingleViewPage() {
                       {getExpiryCountdown(capture.expires_at)}
                     </p>
                   )}
-                  {(capture.site_url || capture.drive_url) && (
+                  {capture.drive_url && (
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
-                      {capture.site_url && (
-                        <a
-                          href={capture.site_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-[11px] text-indigo-600 hover:text-indigo-700 font-medium transition-colors max-w-[280px]"
-                        >
-                          <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                          </svg>
-                          <span className="truncate">{capture.site_url}</span>
-                        </a>
-                      )}
                       {capture.drive_url && (
                         <a
                           href={capture.drive_url}
@@ -784,7 +755,7 @@ export default function SingleViewPage() {
       {/* Delete Capture Modal */}
       {deleteCaptureModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteCaptureModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!deletingCapture) { setDeleteCaptureModalOpen(false); setDeleteOperationId(null); } }} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6 text-center">
             <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -792,14 +763,28 @@ export default function SingleViewPage() {
               </svg>
             </div>
             <h2 className="text-lg font-bold text-foreground mb-2">Delete Capture?</h2>
-            <p className="text-xs text-muted leading-relaxed mb-6">
+            <p className="text-xs text-muted leading-relaxed mb-4">
               Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>? This cannot be undone.
             </p>
+            <fieldset className="space-y-2 text-left mb-4" disabled={deletingCapture}>
+              <legend className="text-xs font-semibold text-foreground mb-2">Delete from</legend>
+              <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
+                <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteOperationId(crypto.randomUUID()); }} className="mt-0.5" />
+                <span><span className="block text-xs font-semibold text-foreground">Google Drive trash + Mazway</span><span className="block text-[11px] text-muted mt-0.5">Moves the Drive file to trash and deletes the Mazway capture.</span></span>
+              </label>
+              <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
+                <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
+                <span><span className="block text-xs font-semibold text-foreground">Mazway only</span><span className="block text-[11px] text-muted mt-0.5">Keeps the file in Google Drive.</span></span>
+              </label>
+            </fieldset>
+            {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">Google Drive is not connected. Reconnect Drive or choose Mazway only.</p>}
+            {deleteCaptureError && <p role="alert" className="text-xs text-red-600 mb-3">{deleteCaptureError}</p>}
             
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <button
-                onClick={() => setDeleteCaptureModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+                onClick={() => { setDeleteCaptureModalOpen(false); setDeleteOperationId(null); }}
+                disabled={deletingCapture}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -812,32 +797,6 @@ export default function SingleViewPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Lightbox Image Preview Modal */}
-      {lightboxOpen && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-6 cursor-zoom-out"
-          onClick={() => setLightboxOpen(false)}
-        >
-          <button
-            onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors p-2"
-            aria-label="Close image preview"
-          >
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxSrc}
-            alt={capture?.title || "Capture preview"}
-            referrerPolicy="no-referrer"
-            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
         </div>
       )}
     </div>

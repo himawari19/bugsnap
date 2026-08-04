@@ -21,7 +21,7 @@ interface Capture {
   duration?: number | null;
   tag?: string | null;
   status?: string | null;
-  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string }[] | null;
+  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string; count?: number }[] | null;
   burn_after_read?: boolean;
   allowed_domains?: string[] | null;
   allowed_ips?: string[] | null;
@@ -101,9 +101,9 @@ function driveThumbUrl(driveUrl: string, size = 400): string | null {
 
 function consoleErrorCount(item: Capture): number {
   if (!Array.isArray(item.dev_logs)) return 0;
-  return item.dev_logs.filter(
-    (l) => l.type === "console" && l.level !== "warn" && l.level !== "warning"
-  ).length;
+  return item.dev_logs
+    .filter((l) => l.type === "console" && l.level !== "warn" && l.level !== "warning")
+    .reduce((total, log) => total + Math.max(1, Number(log.count) || 1), 0);
 }
 
 function expiryToOption(expiresAt: string | null | undefined, createdAt: string): string {
@@ -379,7 +379,10 @@ function CapturesContent() {
   const [search, setSearch] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Capture | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; title?: string; operationId: string } | null>(null);
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
+  const [deleting, setDeleting] = useState(false);
+  const [driveNotConnected, setDriveNotConnected] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [thumbFailed, setThumbFailed] = useState<Record<string, boolean>>({});
   const [userPlan, setUserPlan] = useState<"free" | "pro">("free");
@@ -558,24 +561,81 @@ function CapturesContent() {
     }
   };
 
-  async function handleDelete(id: string) {
-    setDeleting(id);
+  function openDeleteConfirmation(ids: string[], title?: string) {
+    if (ids.length === 0 || deleting) return;
+    setDeleteMode("drive_trash");
+    setDriveNotConnected(false);
     setDeleteError(null);
-    const { error } = await supabase.from("captures").delete().eq("id", id);
-    if (error) {
-      console.warn("Error deleting capture:", error);
-      setDeleteError("Could not delete this capture. Please try again.");
-      setDeleting(null);
-      return;
+    setDeleteRequest({ ids, title, operationId: crypto.randomUUID() });
+    setOpenMenuId(null);
+  }
+
+  async function submitDelete() {
+    if (!deleteRequest || deleting) return;
+    setDeleting(true);
+    setDriveNotConnected(false);
+    setDeleteError(null);
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (sessionError || !token) throw new Error("Your session expired. Please sign in again.");
+
+      const response = await fetch("/api/google-drive/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ captureIds: deleteRequest.ids, mode: deleteMode, operationId: deleteRequest.operationId }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        deletedIds?: string[];
+        deleted_ids?: string[];
+        failedIds?: string[];
+        failed_ids?: string[];
+        results?: Array<{ captureId: string; ok: boolean; error?: string }>;
+        error?: string;
+        message?: string;
+        code?: string;
+      };
+      const deletedIds = result.deletedIds ?? result.deleted_ids ?? result.results?.filter((item) => item.ok).map((item) => item.captureId) ?? [];
+      const failedIds = result.failedIds ?? result.failed_ids ?? result.results?.filter((item) => !item.ok).map((item) => item.captureId) ?? [];
+      const disconnected = response.status === 409 || result.code === "DRIVE_NOT_CONNECTED" || /drive.*not connected/i.test(result.error ?? result.message ?? "");
+
+      if (deletedIds.length > 0) {
+        const removed = new Set(deletedIds);
+        setCaptures((prev) => prev.filter((capture) => !removed.has(capture.id)));
+        setSelectedIds((prev) => new Set(Array.from(prev).filter((id) => !removed.has(id))));
+      }
+      if (disconnected) {
+        setDriveNotConnected(true);
+        setDeleteError("Google Drive is not connected. Connect Drive, or delete from Mazway only.");
+        return;
+      }
+      if (!response.ok || failedIds.length > 0) {
+        const failedCount = failedIds.length || Math.max(0, deleteRequest.ids.length - deletedIds.length);
+        setDeleteError(result.error ?? result.message ?? `${failedCount} capture${failedCount === 1 ? "" : "s"} could not be deleted. Failed captures were kept.`);
+        if (deletedIds.length > 0) setDeleteRequest({
+          ids: failedIds.length ? failedIds : deleteRequest.ids.filter((id) => !deletedIds.includes(id)),
+          operationId: deleteRequest.operationId,
+        });
+        return;
+      }
+
+      setDeleteRequest(null);
+      if (selectMode) exitSelectMode();
+    } catch (error) {
+      console.warn("Error deleting captures:", error);
+      setDeleteError(error instanceof Error ? error.message : "Could not delete the selected captures. Please try again.");
+    } finally {
+      setDeleting(false);
     }
-    setCaptures((prev) => prev.filter((c) => c.id !== id));
-    setDeleting(null);
   }
 
   // Bulk-select mode for deleting many captures at once.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -589,24 +649,6 @@ function CapturesContent() {
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
-  }
-
-  async function handleBulkDelete() {
-    if (selectedIds.size === 0 || bulkDeleting) return;
-    const ids = Array.from(selectedIds);
-    setBulkDeleting(true);
-    setDeleteError(null);
-    const { error } = await supabase.from("captures").delete().in("id", ids);
-    if (error) {
-      console.warn("Error bulk deleting:", error);
-      setDeleteError("Could not delete some captures. Please try again.");
-      setBulkDeleting(false);
-      return;
-    }
-    const removed = new Set(ids);
-    setCaptures((prev) => prev.filter((c) => !removed.has(c.id)));
-    setBulkDeleting(false);
-    exitSelectMode();
   }
 
   const filteredCaptures = workspaceCaptures.filter((item) => {
@@ -692,11 +734,11 @@ function CapturesContent() {
                   : "Select all"}
               </button>
               <button
-                onClick={handleBulkDelete}
-                disabled={selectedIds.size === 0 || bulkDeleting}
+                onClick={() => openDeleteConfirmation(Array.from(selectedIds))}
+                disabled={selectedIds.size === 0 || deleting}
                 className="px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors"
               >
-                {bulkDeleting ? "Deleting…" : `Delete ${selectedIds.size || ""}`}
+                {`Delete ${selectedIds.size || ""}`}
               </button>
               <button
                 onClick={exitSelectMode}
@@ -894,7 +936,7 @@ function CapturesContent() {
                         className="w-full h-full object-cover"
                       />
                       {/* Play overlay for videos so the grid clearly shows what's a recording */}
-                      {item.type === "video" && (
+                      {item.type === "video" ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition-colors">
                           <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                             <svg className="w-5 h-5 text-indigo-600 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -902,6 +944,8 @@ function CapturesContent() {
                             </svg>
                           </div>
                         </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors" />
                       )}
                     </>
                   ) : (
@@ -1054,15 +1098,12 @@ function CapturesContent() {
                       Edit
                     </button>
                     <button
-                      onClick={() => {
-                        handleDelete(item.id);
-                        setOpenMenuId(null);
-                      }}
-                      disabled={deleting === item.id}
+                      onClick={() => openDeleteConfirmation([item.id], item.title)}
+                      disabled={deleting}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                      {deleting === item.id ? "Deleting..." : "Delete"}
+                      Delete
                     </button>
                   </div>
                 </>
@@ -1088,6 +1129,53 @@ function CapturesContent() {
       )}
 
       {editing && <EditModal capture={editing} userPlan={userPlan} onClose={() => setEditing(null)} onSaved={(updated) => setCaptures((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))} />}
+
+      {deleteRequest && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="delete-captures-title">
+          <button className="absolute inset-0 bg-black/40" aria-label="Close confirmation" onClick={() => !deleting && setDeleteRequest(null)} />
+          <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border p-6">
+            <div className="mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+            <h2 id="delete-captures-title" className="text-lg font-bold text-foreground mb-1">
+              Delete {deleteRequest.ids.length === 1 ? "capture" : `${deleteRequest.ids.length} captures`}?
+            </h2>
+            <p className="text-sm text-muted mb-5">
+              {deleteRequest.title ? <><span className="font-medium text-foreground">&quot;{deleteRequest.title}&quot;</span> will be removed.</> : "Choose where the selected captures should be removed from."}
+            </p>
+
+            <div className="space-y-2">
+              <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "drive_trash" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
+                <span className="flex gap-3">
+                  <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); }} disabled={deleting} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-foreground">Move to Drive trash + delete from Mazway</span><span className="block text-xs text-muted mt-0.5">Default. The Drive files can still be restored from trash.</span></span>
+                </span>
+              </label>
+              <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "mazway_only" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
+                <span className="flex gap-3">
+                  <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); setDriveNotConnected(false); setDeleteError(null); }} disabled={deleting} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-foreground">Delete from Mazway only</span><span className="block text-xs text-muted mt-0.5">Keep the original files in Google Drive.</span></span>
+                </span>
+              </label>
+            </div>
+
+            {deleteError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</div>}
+            {driveNotConnected && (
+              <div className="mt-3 flex items-center gap-3">
+                <Link href="/settings" className="text-sm font-semibold text-indigo-600 hover:underline">Connect Drive</Link>
+                <button onClick={() => { setDeleteMode("mazway_only"); setDriveNotConnected(false); setDeleteError(null); }} className="text-sm font-medium text-foreground hover:underline">Use Mazway-only</button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-border">
+              <button onClick={() => setDeleteRequest(null)} disabled={deleting} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50 transition-colors">Cancel</button>
+              <button onClick={submitDelete} disabled={deleting} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
+                {deleting ? "Deleting..." : "Confirm delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

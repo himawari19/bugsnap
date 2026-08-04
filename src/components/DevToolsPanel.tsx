@@ -2,26 +2,40 @@
 
 import { useState } from "react";
 
-export interface ConsoleLog {
+interface TimedLog {
+  time?: string;
+  timestamp?: string;
+  count?: number;
+}
+export interface ConsoleLog extends TimedLog {
   type: "console";
   level?: string;
-  time?: string;
   message?: string;
   text?: string;
 }
-export interface NetworkLog {
+export interface NetworkLog extends TimedLog {
   type: "network";
+  level?: string;
   method?: string;
   status?: number;
   resourceType?: string;
   url?: string;
 }
-export interface ActionLog {
+export interface ActionLog extends TimedLog {
   type: "step";
-  time?: string;
   message?: string;
 }
-export type DevLog = ConsoleLog | NetworkLog | ActionLog;
+export interface NavigationLog extends TimedLog {
+  type: "navigation";
+  message?: string;
+  url?: string;
+}
+export interface ScreenshotLog extends TimedLog {
+  type: "screenshot";
+  message?: string;
+  url?: string;
+}
+export type DevLog = ConsoleLog | NetworkLog | ActionLog | NavigationLog | ScreenshotLog;
 
 // Metadata is read as flat top-level capture fields (`os`, `browser`),
 // matching how the extension stores them as columns on captures.
@@ -29,6 +43,7 @@ export type DevLog = ConsoleLog | NetworkLog | ActionLog;
 interface Props {
   capture: {
     drive_url: string;
+    site_url?: string | null;
     created_at: string;
     window_size?: string | null;
     os?: string | null;
@@ -39,6 +54,74 @@ interface Props {
 
 const TABS = ["Info", "Console", "Network", "Actions"] as const;
 type Tab = typeof TABS[number];
+type Grouped<T> = { log: T; count: number };
+
+function normalizeText(value?: string) {
+  return (value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeLevel(level?: string) {
+  const normalized = normalizeText(level) || "error";
+  return normalized === "warning" ? "warn" : normalized;
+}
+
+function canonicalUrl(value?: string) {
+  return (value || "").split("#", 1)[0];
+}
+
+function logCount(log: TimedLog) {
+  return Math.max(1, Number(log.count) || 1);
+}
+
+function totalLogCount(items: TimedLog[]) {
+  return items.reduce((total, log) => total + logCount(log), 0);
+}
+
+function consoleText(log: ConsoleLog) {
+  return log.message || log.text || "";
+}
+
+function conciseConsoleText(log: ConsoleLog) {
+  const lines = consoleText(log)
+    .replace(/^\[console\]\s*Uncaught Exception:\s*/i, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const meaningful = lines.find((line, index) => index === 0 || !/(webpack|node_modules|react-dom|chrome-extension:|^at (?:__webpack|webpack))/i.test(line));
+  return meaningful || lines[0] || "Console error";
+}
+
+function relativeTime(log: TimedLog, startedAt: string) {
+  const value = log.time || log.timestamp;
+  if (!value) return "—";
+  if (/^[+\d].*(?:ms|s|m|h)$/i.test(value)) return value;
+  const elapsed = new Date(value).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(elapsed)) return value;
+  if (elapsed < 1000) return `${Math.max(0, elapsed)}ms`;
+  if (elapsed < 60000) return `${(elapsed / 1000).toFixed(1)}s`;
+  return `${Math.floor(elapsed / 60000)}m ${Math.floor((elapsed % 60000) / 1000)}s`;
+}
+
+function networkLocation(value?: string) {
+  try {
+    const url = new URL(value || "");
+    return { domain: url.hostname, path: `${url.pathname}${url.search}` || "/" };
+  } catch {
+    return { domain: value || "—", path: "" };
+  }
+}
+
+function groupBy<T extends TimedLog>(items: T[], keyFor: (item: T) => string, mapItem?: (item: T) => T): Grouped<T>[] {
+  const groups = new Map<string, Grouped<T>>();
+  items.forEach((item) => {
+    const key = keyFor(item);
+    const existing = groups.get(key);
+    const itemCount = logCount(item);
+    if (existing) existing.count += itemCount;
+    else groups.set(key, { log: mapItem ? mapItem(item) : item, count: itemCount });
+  });
+  return Array.from(groups.values());
+}
 
 export default function DevToolsPanel({ capture }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("Info");
@@ -47,28 +130,36 @@ export default function DevToolsPanel({ capture }: Props) {
 
   const logs = Array.isArray(capture.dev_logs) ? capture.dev_logs : [];
   
-  const consoleLogs = logs
-    .filter((l): l is ConsoleLog => l.type === "console")
-    .filter((l) => {
-      const msg = (l.message || l.text || "").toLowerCase();
-      const matchesQuery = !logSearch || msg.includes(logSearch.toLowerCase());
-      const isError = l.level !== "warn" && l.level !== "warning";
-      const matchesError = !showErrorsOnly || isError;
-      return matchesQuery && matchesError;
-    });
-
   const networkLogs = logs
     .filter((l): l is NetworkLog => l.type === "network")
+    .filter((l) => !l.status || l.status >= 400 || ["warn", "warning", "error"].includes(normalizeLevel(l.level)))
     .filter((l) => {
       const matchesQuery = !logSearch || (l.url || "").toLowerCase().includes(logSearch.toLowerCase());
-      const isErr = !l.status || l.status >= 400;
+      const isErr = normalizeLevel(l.level) === "error" || !l.status || l.status >= 500;
       const matchesError = !showErrorsOnly || isErr;
       return matchesQuery && matchesError;
     });
 
-  const actionLogs  = logs
-    .filter((l): l is ActionLog  => l.type === "step")
-    .filter((l) => !logSearch || (l.message || "").toLowerCase().includes(logSearch.toLowerCase()));
+  const eventTime = (log: TimedLog) => log.time || log.timestamp || "";
+  // The producer already coalesces short bursts in `count`; keep each emitted event
+  // separate so repeats across navigation or later in the recording retain chronology.
+  const diagnosticLogs = logs
+    .filter((log) => ["navigation", "network", "console", "screenshot"].includes(log.type));
+  const consoleLogs = diagnosticLogs.filter((log) => {
+    const detail = log.type === "network" ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
+      : log.type === "console" ? consoleText(log)
+      : log.message || ("url" in log ? log.url : "") || "";
+    const isError = log.type === "console" ? normalizeLevel(log.level) === "error" : log.type === "network";
+    return (!logSearch || detail.toLowerCase().includes(logSearch.toLowerCase())) && (!showErrorsOnly || isError);
+  });
+  const actionLogs = logs
+    .filter((l): l is ActionLog | NavigationLog => l.type === "step" || l.type === "navigation")
+    .filter((l) => !logSearch || `${l.message || ""} ${"url" in l ? l.url || "" : ""}`.toLowerCase().includes(logSearch.toLowerCase()));
+  const groupedNetworkLogs = groupBy(
+    networkLogs,
+    (log) => `${(log.method || "GET").toUpperCase()}\u0000${log.status ?? "FAILED"}\u0000${canonicalUrl(log.url)}`,
+    (log) => ({ ...log, url: canonicalUrl(log.url) }),
+  );
 
   // Format like: "July 8, 2026 at 4:55 PM GMT+7"
   const createdAt = new Date(capture.created_at).toLocaleString("en-US", {
@@ -103,32 +194,35 @@ export default function DevToolsPanel({ capture }: Props) {
     md += `### 💻 System Info\n`;
     md += `| Field | Value |\n`;
     md += `| :--- | :--- |\n`;
-    md += `| **URL** | [Open link](${capture.drive_url}) |\n`;
+    md += `| **URL** | ${capture.site_url ? `[Open link](${capture.site_url})` : "-"} |\n`;
     md += `| **OS** | ${detectedOs} |\n`;
     md += `| **Browser** | ${detectedBrowser} |\n`;
     md += `| **Window size** | ${capture.window_size || "-"} |\n`;
     md += `| **Recorded at** | ${createdAt} |\n\n`;
 
-    if (consoleLogs.length > 0) {
-      md += `### 🛑 Console Logs (${consoleLogs.length})\n\`\`\`bash\n`;
-      consoleLogs.forEach((log) => {
-        md += `[${(log.level || "ERROR").toUpperCase()}] ${log.time || ""} ${log.message || log.text || ""}\n`;
+    if (diagnosticLogs.length > 0) {
+      md += `### Diagnostic Timeline (${totalLogCount(diagnosticLogs)})\n\`\`\`text\n`;
+      diagnosticLogs.forEach((log) => {
+        const detail = log.type === "network"
+          ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
+          : log.type === "console" ? log.message || log.text || "" : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
+        md += `[${log.type.toUpperCase()}] ${eventTime(log)} ${detail}${(log.count || 1) > 1 ? ` ×${log.count}` : ""}\n`;
       });
       md += `\`\`\`\n\n`;
     }
 
     if (networkLogs.length > 0) {
-      md += `### 🌐 Network Errors (${networkLogs.length})\n| Method | Status | Type | URL |\n| :--- | :--- | :--- | :--- |\n`;
-      networkLogs.forEach((log) => {
-        md += `| ${log.method || "GET"} | ${log.status || "FAILED"} | ${log.resourceType || "xhr"} | ${log.url || ""} |\n`;
+      md += `### 🌐 Network Errors (${totalLogCount(networkLogs)})\n| Method | Status | Type | URL |\n| :--- | :--- | :--- | :--- |\n`;
+      groupedNetworkLogs.forEach(({ log, count }) => {
+        md += `| ${log.method || "GET"} | ${log.status || "FAILED"} | ${log.resourceType || "xhr"} | ${log.url || ""}${count > 1 ? ` ×${count}` : ""} |\n`;
       });
       md += `\n`;
     }
 
     if (actionLogs.length > 0) {
-      md += `### 🖱️ User Actions Timeline\n`;
+      md += `### User Actions Timeline\n`;
       actionLogs.forEach((log) => {
-        md += `- **${log.time || ""}**: ${log.message || ""}\n`;
+        md += `- **${eventTime(log)}**: ${log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}\n`;
       });
       md += `\n`;
     }
@@ -139,9 +233,9 @@ export default function DevToolsPanel({ capture }: Props) {
   }
 
   const tabLabel = (t: Tab) => {
-    if (t === "Console" && consoleLogs.length) return `Console (${consoleLogs.length})`;
-    if (t === "Network" && networkLogs.length) return `Network (${networkLogs.length})`;
-    if (t === "Actions" && actionLogs.length)  return `Actions (${actionLogs.length})`;
+    if (t === "Console" && diagnosticLogs.length) return `Console (${totalLogCount(diagnosticLogs)})`;
+    if (t === "Network" && networkLogs.length) return `Network (${totalLogCount(networkLogs)})`;
+    if (t === "Actions" && actionLogs.length)  return `Actions (${totalLogCount(actionLogs)})`;
     return t;
   };
 
@@ -151,7 +245,7 @@ export default function DevToolsPanel({ capture }: Props) {
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-foreground">DevTools</span>
         <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-          {logs.length} events
+          {totalLogCount(logs)} events
         </span>
       </div>
 
@@ -210,17 +304,19 @@ export default function DevToolsPanel({ capture }: Props) {
           <div className="p-4 space-y-4">
 
             {/* URL */}
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">URL</p>
-              <a
-                href={capture.drive_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-[11px] font-mono text-indigo-600 hover:underline bg-subtle/60 border border-border rounded-lg px-2.5 py-2 truncate"
-              >
-                {capture.drive_url}
-              </a>
-            </div>
+            {capture.site_url && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">URL</p>
+                <a
+                  href={capture.site_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-[11px] font-mono text-indigo-600 hover:underline bg-subtle/60 border border-border rounded-lg px-2.5 py-2 truncate"
+                >
+                  {capture.site_url}
+                </a>
+              </div>
+            )}
 
             {/* Device Card (Jam.dev style) */}
             <div className="rounded-xl border border-border overflow-hidden">
@@ -313,99 +409,59 @@ export default function DevToolsPanel({ capture }: Props) {
 
         {/* CONSOLE TAB */}
         {activeTab === "Console" && (
-          <div className="p-3 space-y-1.5">
+          <div>
             {consoleLogs.length === 0 ? (
-              <div className="py-14 flex flex-col items-center gap-2 text-muted">
-                <svg className="w-8 h-8 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p className="text-xs">No console errors recorded</p>
-              </div>
-            ) : (
-              consoleLogs.map((log, i) => {
-                const isWarn = log.level === "warn" || log.level === "warning";
-                return (
-                  <div key={i} className={`rounded-lg border px-3 py-2 text-xs font-mono ${
-                    isWarn
-                      ? "bg-amber-50 border-amber-100 text-amber-900"
-                      : "bg-red-50 border-red-100 text-red-900"
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        isWarn ? "bg-amber-200 text-amber-800" : "bg-red-200 text-red-800"
-                      }`}>
-                        {isWarn ? "WARN" : "ERROR"}
-                      </span>
-                      {log.time && <span className="text-[10px] text-muted font-sans">{log.time}</span>}
-                    </div>
-                    <p className="break-all leading-relaxed">{log.message || log.text || ""}</p>
-                  </div>
-                );
-              })
-            )}
+              <div className="py-14 text-center text-xs text-muted">No matching console events</div>
+            ) : consoleLogs.map((log, i) => {
+              const level = log.type === "console" ? normalizeLevel(log.level) : log.type;
+              const isWarn = level === "warn" || (log.type === "network" && !!log.status && log.status < 500);
+              const detail = log.type === "network" ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
+                : log.type === "console" ? conciseConsoleText(log)
+                : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
+              const fullText = log.type === "console" ? consoleText(log) : detail;
+              return (
+                <div key={i} className={`grid grid-cols-[42px_18px_minmax(0,1fr)_auto] gap-1.5 border-b border-border/70 px-2 py-1.5 text-xs ${isWarn ? "bg-amber-50/60" : level === "error" || log.type === "network" ? "bg-red-50/60" : "bg-white"}`}>
+                  <time className="pt-0.5 text-[9px] tabular-nums text-muted" title={eventTime(log)}>{relativeTime(log, capture.created_at)}</time>
+                  <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" || log.type === "network" ? "text-red-600" : "text-muted"}`} aria-label={`${level} event`} title={level}>{isWarn ? "!" : level === "error" || log.type === "network" ? "×" : "•"}</span>
+                  <p className="min-w-0 overflow-hidden text-ellipsis break-words leading-4 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={fullText}>{detail}</p>
+                  {logCount(log) > 1 && <span className="text-[9px] font-semibold text-muted" aria-label={`Repeated ${logCount(log)} times`}>×{logCount(log)}</span>}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* NETWORK TAB */}
         {activeTab === "Network" && (
-          <div className="p-3 space-y-1.5">
+          <div className="overflow-x-auto">
             {networkLogs.length === 0 ? (
-              <div className="py-14 flex flex-col items-center gap-2 text-muted">
-                <svg className="w-8 h-8 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p className="text-xs">No network errors recorded</p>
-              </div>
+              <div className="py-14 text-center text-xs text-muted">No network errors recorded</div>
             ) : (
-              networkLogs.map((log, i) => {
-                const isErr = !log.status || log.status >= 400;
-                let domain = "";
-                let path = log.url || "";
-                try { const u = new URL(log.url!); domain = u.hostname; path = u.pathname + u.search; } catch {}
-                return (
-                  <div key={i} className={`rounded-lg border px-3 py-2 text-xs font-mono group relative ${
-                    isErr ? "bg-red-50 border-red-100" : "bg-amber-50 border-amber-100"
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold uppercase bg-foreground/10 px-1.5 py-0.5 rounded text-foreground">
-                          {log.method || "GET"}
-                        </span>
-                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                          isErr ? "bg-red-200 text-red-800" : "bg-amber-200 text-amber-800"
-                        }`}>
-                          {log.status || "FAILED"}
-                        </span>
-                        {log.resourceType && (
-                          <span className="text-[9px] text-muted">{log.resourceType}</span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => {
-                          const curl = `curl -X ${log.method || "GET"} "${log.url}"`;
-                          navigator.clipboard.writeText(curl);
-                          const btn = document.getElementById(`curl-btn-${i}`);
-                          if (btn) {
-                            btn.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
-                            setTimeout(() => {
-                              btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
-                            }, 1500);
-                          }
-                        }}
-                        id={`curl-btn-${i}`}
-                        title="Copy as cURL"
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-black/5 text-muted hover:text-foreground transition-all"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-muted font-sans pr-6">{domain}</p>
-                    <p className="break-all text-foreground pr-6">{path}</p>
-                  </div>
-                );
-              })
+              <table className="w-full min-w-[350px] table-fixed text-left text-[10px]" aria-label="Network requests">
+                <thead className="sticky top-0 z-10 bg-subtle text-[9px] uppercase tracking-wide text-muted">
+                  <tr><th className="w-14 px-2 py-1.5 font-semibold">Method</th><th className="w-14 px-1 py-1.5 font-semibold">Status</th><th className="w-14 px-1 py-1.5 font-semibold">Type</th><th className="px-1 py-1.5 font-semibold">Domain</th></tr>
+                </thead>
+                <tbody>
+                  {groupedNetworkLogs.map(({ log, count }, i) => {
+                    const { domain, path } = networkLocation(log.url);
+                    const fullLocation = log.url || domain;
+                    return (
+                      <tr key={i} className="group border-b border-border/70 hover:bg-subtle/60">
+                        <td className="px-2 py-1.5 font-mono font-semibold uppercase">{log.method || "GET"}</td>
+                        <td className={`px-1 py-1.5 font-mono font-semibold ${!log.status || log.status >= 400 ? "text-red-600" : "text-amber-700"}`}>{log.status || "FAILED"}</td>
+                        <td className="truncate px-1 py-1.5 text-muted" title={log.resourceType || "xhr"}>{log.resourceType || "xhr"}</td>
+                        <td className="min-w-0 px-1 py-1.5" title={fullLocation}>
+                          <div className="flex min-w-0 items-center gap-1">
+                            <span className="truncate font-medium">{domain}</span>
+                            {count > 1 && <span className="shrink-0 font-semibold text-muted" aria-label={`Repeated ${count} times`}>×{count}</span>}
+                          </div>
+                          {path && <div className="truncate font-mono text-[9px] text-muted">{path}</div>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         )}
@@ -449,9 +505,9 @@ export default function DevToolsPanel({ capture }: Props) {
                         </div>
                         <div className="flex-1 pb-3">
                           <div className="flex items-center gap-2">
-                            {log.time && <span className="text-[10px] text-muted font-mono">{log.time}</span>}
+                            {eventTime(log) && <span className="text-[10px] text-muted font-mono">{eventTime(log)}</span>}
                           </div>
-                          <p className="text-xs text-foreground leading-relaxed">{log.message || ""}</p>
+                          <p className="text-xs text-foreground leading-relaxed">{log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}</p>
                         </div>
                       </div>
                     );
