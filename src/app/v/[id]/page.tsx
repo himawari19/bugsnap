@@ -67,10 +67,15 @@ export default function SingleViewPage() {
   const [embedModal, setEmbedModal] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
   const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
   const [deletingCapture, setDeletingCapture] = useState(false);
+  const [deleteCaptureError, setDeleteCaptureError] = useState<string | null>(null);
+  const [driveNotConnected, setDriveNotConnected] = useState(false);
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
 
   // Edit / Delete for internal workspace members
   const [isTeamMember, setIsTeamMember] = useState(false);
+  const [isWorkspaceOwner, setIsWorkspaceOwner] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -148,10 +153,12 @@ export default function SingleViewPage() {
             const { data: members } = await supabase.rpc("get_workspace_members", {
               p_workspace_id: wsId,
             });
-            const memberList = (members ?? []) as { user_id: string }[];
-            if (memberList.some((m) => m.user_id === userId)) {
+            const memberList = (members ?? []) as { user_id: string; role?: string }[];
+            const currentMember = memberList.find((member) => member.user_id === userId);
+            if (currentMember) {
               bypass = true;
               setIsTeamMember(true);
+              setIsWorkspaceOwner(currentMember.role === "owner");
             }
           }
           }
@@ -343,21 +350,47 @@ export default function SingleViewPage() {
   }
 
   function handleDeleteCapture() {
-    if (!capture) return;
+    if (!capture || !isWorkspaceOwner) return;
+    setDeleteMode("drive_trash");
+    setDeleteCaptureError(null);
+    setDriveNotConnected(false);
+    setDeleteOperationId(crypto.randomUUID());
     setDeleteCaptureModalOpen(true);
   }
 
   async function submitDeleteCapture() {
-    if (!capture || deletingCapture) return;
+    if (!capture || !isWorkspaceOwner || deletingCapture || !deleteOperationId) return;
     setDeletingCapture(true);
+    setDeleteCaptureError(null);
+    setDriveNotConnected(false);
     try {
-      const { error } = await supabase.from("captures").delete().eq("id", capture.id);
-      if (error) throw error;
-      router.push("/captures");
+      const { data, error } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (error || !token) throw new Error("Sign in again to delete this capture.");
+
+      const response = await fetch("/api/google-drive/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ captureIds: [capture.id], mode: deleteMode, operationId: deleteOperationId }),
+      });
+      const result = await response.json().catch(() => ({})) as {
+        results?: Array<{ captureId: string; ok: boolean; error?: string }>;
+        error?: string;
+      };
+      const captureResult = result.results?.find((item) => item.captureId === capture.id);
+      if (captureResult?.ok) {
+        setDeleteCaptureModalOpen(false);
+        setDeleteOperationId(null);
+        router.push("/captures");
+        return;
+      }
+
+      const isDriveNotConnected = response.status === 409 || /drive.*not connected/i.test(result.error || "");
+      if (isDriveNotConnected) setDriveNotConnected(true);
+      throw new Error(captureResult?.error || result.error || "Could not delete this capture. Please try again.");
     } catch (err) {
       console.warn("Failed to delete capture:", err);
-      alert("Could not delete capture.");
-      setDeleteCaptureModalOpen(false);
+      setDeleteCaptureError(err instanceof Error ? err.message : "Could not delete this capture. Please try again.");
     } finally {
       setDeletingCapture(false);
     }
@@ -428,20 +461,20 @@ export default function SingleViewPage() {
                     </button>
                   )}
                   {isTeamMember && (
-                    <>
-                      <button
-                        onClick={() => { openEditModal(); setMoreOpen(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 font-semibold rounded-lg transition-colors"
-                      >
-                        Edit Capture
-                      </button>
-                      <button
-                        onClick={() => { handleDeleteCapture(); setMoreOpen(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold rounded-lg transition-colors"
-                      >
-                        Delete Capture
-                      </button>
-                    </>
+                    <button
+                      onClick={() => { openEditModal(); setMoreOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 font-semibold rounded-lg transition-colors"
+                    >
+                      Edit Capture
+                    </button>
+                  )}
+                  {isWorkspaceOwner && (
+                    <button
+                      onClick={() => { handleDeleteCapture(); setMoreOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold rounded-lg transition-colors"
+                    >
+                      Delete Capture
+                    </button>
                   )}
                   {isAuthenticated === false && (
                     <a
@@ -722,7 +755,7 @@ export default function SingleViewPage() {
       {/* Delete Capture Modal */}
       {deleteCaptureModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteCaptureModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!deletingCapture) { setDeleteCaptureModalOpen(false); setDeleteOperationId(null); } }} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6 text-center">
             <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -730,14 +763,28 @@ export default function SingleViewPage() {
               </svg>
             </div>
             <h2 className="text-lg font-bold text-foreground mb-2">Delete Capture?</h2>
-            <p className="text-xs text-muted leading-relaxed mb-6">
+            <p className="text-xs text-muted leading-relaxed mb-4">
               Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>? This cannot be undone.
             </p>
+            <fieldset className="space-y-2 text-left mb-4" disabled={deletingCapture}>
+              <legend className="text-xs font-semibold text-foreground mb-2">Delete from</legend>
+              <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
+                <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteOperationId(crypto.randomUUID()); }} className="mt-0.5" />
+                <span><span className="block text-xs font-semibold text-foreground">Google Drive trash + Mazway</span><span className="block text-[11px] text-muted mt-0.5">Moves the Drive file to trash and deletes the Mazway capture.</span></span>
+              </label>
+              <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
+                <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
+                <span><span className="block text-xs font-semibold text-foreground">Mazway only</span><span className="block text-[11px] text-muted mt-0.5">Keeps the file in Google Drive.</span></span>
+              </label>
+            </fieldset>
+            {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">Google Drive is not connected. Reconnect Drive or choose Mazway only.</p>}
+            {deleteCaptureError && <p role="alert" className="text-xs text-red-600 mb-3">{deleteCaptureError}</p>}
             
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <button
-                onClick={() => setDeleteCaptureModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
+                onClick={() => { setDeleteCaptureModalOpen(false); setDeleteOperationId(null); }}
+                disabled={deletingCapture}
+                className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

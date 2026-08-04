@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: "📊" },
-  { label: "All Captures", href: "/captures", icon: "📁" },
+  { label: "All Captures", href: "/captures", icon: "▦" },
 ];
 
 type Workspace = {
@@ -818,14 +818,8 @@ export default function DashboardLayout({
                     : "text-muted hover:text-foreground hover:bg-subtle"
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
+                <span className="text-base" aria-hidden="true">{item.icon}</span>
                 {item.label}
-                {/* In-app notification badge (new comments, 24h) */}
-                {item.href === "/captures" && newCommentCount > 0 && (
-                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    {newCommentCount > 99 ? "99+" : newCommentCount}
-                  </span>
-                )}
               </Link>
             );
           })}

@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [webhookUrl, setWebhookUrl] = useState("");
   const [brandName, setBrandName] = useState("mazway");
   const [logoUrl, setLogoUrl] = useState("");
@@ -14,16 +16,36 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveEmail, setDriveEmail] = useState<string | null>(null);
+  const [driveLoading, setDriveLoading] = useState(true);
+  const [driveActionLoading, setDriveActionLoading] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveSuccess, setDriveSuccess] = useState<string | null>(null);
+  const [connectDriveModalOpen, setConnectDriveModalOpen] = useState(false);
 
   // Load the active workspace id from the ?ws= URL param (same pattern as
   // the dashboard layout), falling back to null when absent.
   const [activeWsId, setActiveWsId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setActiveWsId(new URL(window.location.href).searchParams.get("ws"));
+    const url = new URL(window.location.href);
+    setActiveWsId(url.searchParams.get("ws"));
+
+    const driveResult = url.searchParams.get("drive");
+    if (driveResult === "connected") {
+      setDriveSuccess("Google Drive connected successfully.");
+      setDriveError(null);
+    } else if (driveResult === "error") {
+      setDriveError("Google Drive could not be connected. Please try again.");
+      setDriveSuccess(null);
     }
-  }, []);
+
+    if (driveResult === "connected" || driveResult === "error") {
+      url.searchParams.delete("drive");
+      router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+    }
+  }, [router]);
 
   useEffect(() => {
     // Load workspace settings
@@ -60,6 +82,61 @@ export default function SettingsPage() {
       }
     });
   }, [activeWsId]);
+
+  async function driveRequest(path: string, init?: RequestInit) {
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (sessionError || !token) throw new Error("Your session expired. Please sign in again.");
+    const response = await fetch(path, {
+      ...init,
+      headers: { ...init?.headers, Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Google Drive request failed.");
+    return result;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    driveRequest("/api/google-drive/status")
+      .then((result) => {
+        if (cancelled) return;
+        setDriveConnected(Boolean(result.connected));
+        setDriveEmail(result.email || null);
+      })
+      .catch((err) => { if (!cancelled) setDriveError(err instanceof Error ? err.message : "Could not load Drive status."); })
+      .finally(() => { if (!cancelled) setDriveLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function connectDrive() {
+    if (driveActionLoading) return;
+    setDriveActionLoading(true);
+    setDriveError(null);
+    try {
+      const result = await driveRequest("/api/google-drive/connect", { method: "POST" });
+      if (!result.url) throw new Error("Google authorization URL was not returned.");
+      window.location.assign(result.url);
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "Could not connect Google Drive.");
+      setDriveActionLoading(false);
+    }
+  }
+
+  async function disconnectDrive() {
+    if (driveActionLoading) return;
+    setDriveActionLoading(true);
+    setDriveError(null);
+    try {
+      await driveRequest("/api/google-drive/disconnect", { method: "DELETE" });
+      setDriveConnected(false);
+      setDriveEmail(null);
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "Could not disconnect Google Drive.");
+    } finally {
+      setDriveActionLoading(false);
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -110,6 +187,25 @@ export default function SettingsPage() {
             Manage Members →
           </Link>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-white p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-foreground">Google Drive</h2>
+              {!driveLoading && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${driveConnected ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-muted bg-subtle border-border"}`}>{driveConnected ? "Connected" : "Not connected"}</span>}
+            </div>
+            <p className="text-xs text-muted mt-1">{driveLoading ? "Checking connection..." : driveConnected ? `Captures use ${driveEmail || "your connected Google account"}.` : "Connect your account to manage capture files in Drive."}</p>
+          </div>
+          {driveConnected ? (
+            <button type="button" onClick={disconnectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50 transition-colors">{driveActionLoading ? "Disconnecting..." : "Disconnect"}</button>
+          ) : (
+            <button type="button" onClick={() => setConnectDriveModalOpen(true)} disabled={driveLoading || driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">Connect Drive</button>
+          )}
+        </div>
+        {driveSuccess && <p role="status" className="text-xs text-emerald-600 mt-3">{driveSuccess}</p>}
+        {driveError && <p role="alert" className="text-xs text-red-600 mt-3">{driveError}</p>}
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
@@ -232,6 +328,21 @@ export default function SettingsPage() {
           {saved && <span className="text-xs font-medium text-emerald-600">✓ Settings saved successfully!</span>}
         </div>
       </form>
+
+      {connectDriveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="connect-drive-title">
+          <button className="absolute inset-0 bg-black/40" aria-label="Close" onClick={() => !driveActionLoading && setConnectDriveModalOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-xl border border-border bg-white p-6 shadow-xl">
+            <h2 id="connect-drive-title" className="text-lg font-bold text-foreground">Connect Google Drive?</h2>
+            <p className="text-sm text-muted mt-2">You&apos;ll continue to Google to authorize Mazway to manage capture files in your Drive.</p>
+            {driveError && <p role="alert" className="text-xs text-red-600 mt-3">{driveError}</p>}
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+              <button type="button" onClick={() => setConnectDriveModalOpen(false)} disabled={driveActionLoading} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={connectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{driveActionLoading ? "Connecting..." : "Continue to Google"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -18,19 +18,13 @@ function driveFileId(url: string): string | null {
   }
 }
 
-function ActionIcon({ children }: { children: React.ReactNode }) {
-  return <span className="h-5 w-5" aria-hidden="true">{children}</span>;
-}
-
 export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps) {
-  const stageRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const lightboxTriggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [videoFailed, setVideoFailed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const fileId = driveUrl ? driveFileId(driveUrl) : null;
   const imageUrl = fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w2400` : null;
@@ -42,12 +36,6 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
     setImageFailed(false);
     setLightboxOpen(false);
   }, [driveUrl, type]);
-
-  useEffect(() => {
-    const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", updateFullscreen);
-    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
-  }, []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -66,62 +54,12 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
     lightboxTriggerRef.current?.focus();
   }
 
-  async function toggleFullscreen(target: HTMLElement | null) {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await target?.requestFullscreen();
-    } catch {
-      // Fullscreen can be denied by browser or embedding policy; native controls remain usable.
-    }
-  }
-
-  const actions = (inDialog = false) => (
-    <div className={inDialog ? "flex items-center gap-2" : "absolute right-3 top-3 z-10 flex items-center gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"}>
-      {directUrl && (
-        <a
-          href={directUrl}
-          download
-          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-black/75 px-3 text-sm font-medium text-white shadow-lg backdrop-blur hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          aria-label="Download capture"
-          title="Download"
-        >
-          <ActionIcon><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg></ActionIcon>
-          <span className="hidden sm:inline">Download</span>
-        </a>
-      )}
-      <button
-        type="button"
-        onClick={() => toggleFullscreen(inDialog ? dialogRef.current : stageRef.current)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-black/75 px-3 text-sm font-medium text-white shadow-lg backdrop-blur hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        aria-label={isFullscreen ? "Exit fullscreen" : "View fullscreen"}
-        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-      >
-        <ActionIcon><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5m13 5h5v-5" /></svg></ActionIcon>
-        <span className="hidden sm:inline">{isFullscreen ? "Exit" : "Fullscreen"}</span>
-      </button>
-      {driveUrl && (
-        <a
-          href={driveUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-black/75 px-3 text-sm font-medium text-white shadow-lg backdrop-blur hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          aria-label="Open capture in Google Drive"
-          title="Open in Drive"
-        >
-          <ActionIcon><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 5h5v5M10 14 19 5M19 14v5H5V5h5" /></svg></ActionIcon>
-          <span className="hidden sm:inline">Open Drive</span>
-        </a>
-      )}
-    </div>
-  );
-
   const unavailable = !fileId || (type !== "video" && type !== "screenshot");
 
   return (
     <>
       <div
-        ref={stageRef}
-        className="relative flex h-[clamp(28rem,72vh,60rem)] min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#111214] shadow-inner"
+        className="relative flex h-[clamp(28rem,72vh,60rem)] min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-[#f4f4f6] p-4 shadow-inner sm:p-6"
       >
         {unavailable ? (
           <div className="px-6 text-center text-sm text-white/70" role="status">Preview unavailable</div>
@@ -170,8 +108,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
         className="m-0 h-screen max-h-none w-screen max-w-none bg-black/95 p-0 text-white backdrop:bg-black/95"
       >
         <div className="relative flex h-full w-full items-center justify-center p-4 sm:p-8">
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-2 sm:right-4 sm:top-4">
-            {actions(true)}
+          <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
             <button
               ref={closeButtonRef}
               type="button"
