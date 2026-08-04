@@ -29,6 +29,7 @@ export type DevLog = ConsoleLog | NetworkLog | ActionLog;
 interface Props {
   capture: {
     drive_url: string;
+    site_url?: string | null;
     created_at: string;
     window_size?: string | null;
     os?: string | null;
@@ -103,7 +104,7 @@ export default function DevToolsPanel({ capture }: Props) {
     md += `### 💻 System Info\n`;
     md += `| Field | Value |\n`;
     md += `| :--- | :--- |\n`;
-    md += `| **URL** | [Open link](${capture.drive_url}) |\n`;
+    md += `| **URL** | ${capture.site_url ? `[Open link](${capture.site_url})` : "-"} |\n`;
     md += `| **OS** | ${detectedOs} |\n`;
     md += `| **Browser** | ${detectedBrowser} |\n`;
     md += `| **Window size** | ${capture.window_size || "-"} |\n`;
@@ -210,17 +211,19 @@ export default function DevToolsPanel({ capture }: Props) {
           <div className="p-4 space-y-4">
 
             {/* URL */}
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">URL</p>
-              <a
-                href={capture.drive_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-[11px] font-mono text-indigo-600 hover:underline bg-subtle/60 border border-border rounded-lg px-2.5 py-2 truncate"
-              >
-                {capture.drive_url}
-              </a>
-            </div>
+            {capture.site_url && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">URL</p>
+                <a
+                  href={capture.site_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-[11px] font-mono text-indigo-600 hover:underline bg-subtle/60 border border-border rounded-lg px-2.5 py-2 truncate"
+                >
+                  {capture.site_url}
+                </a>
+              </div>
+            )}
 
             {/* Device Card (Jam.dev style) */}
             <div className="rounded-xl border border-border overflow-hidden">

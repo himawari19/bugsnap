@@ -596,23 +596,8 @@ export default function SingleViewPage() {
                       {getExpiryCountdown(capture.expires_at)}
                     </p>
                   )}
-                  {(capture.site_url || capture.drive_url) && (
+                  {capture.drive_url && (
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
-                      {capture.site_url && (
-                        <a
-                          href={capture.site_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-[11px] text-indigo-600 hover:text-indigo-700 font-medium transition-colors max-w-[280px]"
-                        >
-                          <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                          </svg>
-                          <span className="truncate">{capture.site_url}</span>
-                        </a>
-                      )}
                       {capture.drive_url && (
                         <a
                           href={capture.drive_url}
