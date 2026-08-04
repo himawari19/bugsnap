@@ -93,6 +93,7 @@ export default function SingleViewPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const [viewerEmail, setViewerEmail] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [brand, setBrand] = useState({ name: "mazway", logo: "", hideWatermark: false });
 
   // 1. Initial Access Check (Non-Login default)
@@ -119,9 +120,15 @@ export default function SingleViewPage() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user?.email && !cancelled) {
-        setViewerEmail(data.session.user.email);
-      }
+      if (cancelled) return;
+      setIsAuthenticated(!!data.session?.user);
+      setViewerEmail(data.session?.user?.email ?? null);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      setIsAuthenticated(!!session?.user);
+      setViewerEmail(session?.user?.email ?? null);
     });
 
     supabase
@@ -210,7 +217,10 @@ export default function SingleViewPage() {
       if (!cancelled && data != null) setViewCount(Number(data));
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
   }, [id]);
 
   // 2. View Tracking Effect
@@ -447,13 +457,15 @@ export default function SingleViewPage() {
                       </button>
                     </>
                   )}
-                  <a
-                    href="/"
-                    onClick={() => setMoreOpen(false)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
-                  >
-                    Login
-                  </a>
+                  {isAuthenticated === false && (
+                    <a
+                      href="/"
+                      onClick={() => setMoreOpen(false)}
+                      className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
+                    >
+                      Login
+                    </a>
+                  )}
                 </div>
               </>
             )}
