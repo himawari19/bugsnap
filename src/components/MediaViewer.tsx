@@ -121,9 +121,8 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
     <>
       <div
         ref={stageRef}
-        className="group relative flex h-[clamp(20rem,60vh,52rem)] min-h-[20rem] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#111214] shadow-inner"
+        className="relative flex h-[clamp(28rem,72vh,60rem)] min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#111214] shadow-inner"
       >
-        {!unavailable && actions()}
         {unavailable ? (
           <div className="px-6 text-center text-sm text-white/70" role="status">Preview unavailable</div>
         ) : type === "video" ? (
