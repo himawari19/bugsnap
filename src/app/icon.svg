@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="mazwayScreen">
+  <defs>
+    <linearGradient id="frame" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18B7E9"/>
+      <stop offset=".54" stop-color="#4C8BF0"/>
+      <stop offset="1" stop-color="#8A42E8"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="38" y1="35" x2="89" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#74D7D2"/>
+      <stop offset="1" stop-color="#27AEBB"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#frame)"/>
+  <circle cx="64" cy="64" r="38" fill="#FFF"/>
+  <circle cx="64" cy="64" r="28" fill="url(#lens)"/><circle cx="64" cy="64" r="12" fill="#FFF"/><circle cx="64" cy="64" r="5" fill="#5B61DA"/>
+  <path d="M82 105c-2-6 1-11 7-12 1-8 7-12 14-11 8 0 13 5 14 11 6-1 10 3 10 8 0 6-5 10-11 10H92c-6 0-9-2-10-6Z" fill="#FFF" stroke="#6841C7" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M104 105V91m0 0-6 6m6-6 6 6" fill="none" stroke="#6841C7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
