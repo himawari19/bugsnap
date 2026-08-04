@@ -82,48 +82,8 @@ $$;
 -- Public and authenticated roles may call the RPC.
 grant execute on function public.get_public_capture(uuid, text) to anon, authenticated;
 
--- --------------------------------------------------------------------
--- SECURITY HARDENING: Enable RLS on the `captures` table to prevent
--- raw client-side select bypasses.
--- --------------------------------------------------------------------
-alter table public.captures enable row level security;
-
-drop policy if exists "Enable select for authenticated workspace members" on public.captures;
-drop policy if exists "Enable delete for owners" on public.captures;
-drop policy if exists "Enable update for owners" on public.captures;
-
--- Allow authenticated users to view captures that belong to workspaces they are member of
-create policy "Enable select for authenticated workspace members" on public.captures
-  for select
-  to authenticated
-  using (
-    workspace_id in (
-      select workspace_id from public.workspace_members
-      where user_id = auth.uid()
-    )
-  );
-
--- Allow owners to delete / update their own captures
-create policy "Enable delete for owners" on public.captures
-  for delete
-  to authenticated
-  using (
-    workspace_id in (
-      select w.id from public.workspaces w
-      where w.owner_user_id = auth.uid()
-    )
-  );
-
-create policy "Enable update for owners" on public.captures
-  for update
-  to authenticated
-  using (
-    workspace_id in (
-      select w.id from public.workspaces w
-      where w.owner_user_id = auth.uid()
-    )
-  );
-
+-- Workspace-based capture policies are installed after workspace_id exists
+-- (004_workspace_captures.sql). Keeping them here breaks fresh installs.
 
 -- --------------------------------------------------------------------
 -- OPTIONAL HARDENING — direct anon access to the raw columns.

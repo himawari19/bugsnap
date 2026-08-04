@@ -21,6 +21,29 @@ alter table public.captures
 
 create index if not exists captures_workspace_id_idx on public.captures(workspace_id);
 
+alter table public.captures enable row level security;
+drop policy if exists "Enable select for authenticated workspace members" on public.captures;
+drop policy if exists "Enable delete for owners" on public.captures;
+drop policy if exists "Enable update for owners" on public.captures;
+create policy "Enable select for authenticated workspace members" on public.captures
+  for select to authenticated using (
+    exists (select 1 from public.workspace_members m
+            where m.workspace_id = captures.workspace_id and m.user_id = auth.uid())
+  );
+create policy "Enable delete for owners" on public.captures
+  for delete to authenticated using (
+    exists (select 1 from public.workspaces w
+            where w.id = captures.workspace_id and w.owner_user_id = auth.uid())
+  );
+create policy "Enable update for owners" on public.captures
+  for update to authenticated using (
+    exists (select 1 from public.workspaces w
+            where w.id = captures.workspace_id and w.owner_user_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.workspaces w
+            where w.id = captures.workspace_id and w.owner_user_id = auth.uid())
+  );
+
 do $$
 begin
   if exists (

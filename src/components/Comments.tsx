@@ -121,7 +121,7 @@ export default function Comments({
 
     supabase
       .from("comments")
-      .select("*")
+      .select("id, capture_id, parent_id, author_name, body, video_timestamp, created_at")
       .eq("capture_id", captureId)
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
@@ -226,6 +226,7 @@ export default function Comments({
         p_body: text,
         p_author_name: author_name,
         p_author_email: author_email,
+        p_video_timestamp: video_timestamp,
       });
       if (error) throw error;
       setComments((prev) =>

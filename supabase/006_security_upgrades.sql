@@ -43,6 +43,12 @@ create policy "Audit logs viewable by capture owner" on public.audit_logs
     )
   );
 
+-- Helper must exist before get_public_capture is parsed on a fresh install.
+create or replace function public.card_identity(arr text[])
+returns integer language sql immutable
+set search_path = pg_catalog
+as $$ select coalesce(array_length(arr, 1), 0) $$;
+
 -- 4. Re-create get_public_capture to enforce whitelists, IP limits, and burn-after-read
 drop function if exists public.get_public_capture(uuid, text) cascade;
 
@@ -167,13 +173,6 @@ end;
 $$;
 
 grant execute on function public.get_public_capture(uuid, text) to anon, authenticated;
-
--- Helper to check array cardinality easily in plpgsql
-create or replace function public.card_identity(arr text[])
-returns integer as $$
-  select coalesce(array_length(arr, 1), 0);
-$$ language sql immutable;
-
 
 -- 5. Update post_comment to implement rate-limiting spam protection
 create or replace function public.post_comment(

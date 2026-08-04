@@ -137,8 +137,7 @@ export default function SingleViewPage() {
         try {
           const { data: authData } = await supabase.auth.getSession();
           const userId = authData.session?.user?.id;
-          if (!userId) return;
-
+          if (userId) {
           // get_public_capture does NOT return workspace_id, so fetch it directly
           // from the captures table (member-scoped, safe via RLS).
           let wsId = row.workspace_id || null;
@@ -160,6 +159,7 @@ export default function SingleViewPage() {
               bypass = true;
               setIsTeamMember(true);
             }
+          }
           }
         } catch {}
 
@@ -275,9 +275,12 @@ export default function SingleViewPage() {
     if (aiSummary) return;
     setAiLoading(true);
     try {
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      const token = authData.session?.access_token;
+      if (authError || !token) throw new Error("Sign in to generate an AI report.");
       const res = await fetch("/api/ai-bug-summary", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           title: capture?.title,
           devLogs: capture?.dev_logs,
@@ -285,20 +288,24 @@ export default function SingleViewPage() {
         }),
       });
       const json = await res.json();
+      if (!res.ok) throw new Error(res.status === 401 ? "Sign in to generate an AI report." : json.error || "Failed to generate AI report.");
       if (json.summary) setAiSummary(json.summary);
-    } catch {
-      setAiSummary("Failed to generate AI report.");
+    } catch (error) {
+      setAiSummary(error instanceof Error ? error.message : "Failed to generate AI report.");
     } finally {
       setAiLoading(false);
     }
   }
 
-  function handleCopyLink() {
+  async function handleCopyLink() {
     if (!capture) return;
-    const shareUrl = `${window.location.origin}/v/${capture.id}`;
-    navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/v/${capture.id}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Clipboard permission was denied. Please copy the link from the address bar.");
+    }
   }
 
   // Edit / Delete logic

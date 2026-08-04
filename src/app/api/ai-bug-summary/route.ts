@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase-server";
 
 interface DevLog {
   type: string;
@@ -14,10 +15,28 @@ interface DevLog {
 export const runtime = "nodejs"; // fetch to OpenAI works in edge too, but nodejs is safest
 
 export async function POST(req: Request) {
-  try {
-    const { title, devLogs, windowSize } = await req.json();
+  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const logs: DevLog[] = Array.isArray(devLogs) ? devLogs : [];
+  try {
+    const { data: { user }, error } = await createServiceClient().auth.getUser(token);
+    if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body: unknown = await req.json();
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    const { title, devLogs, windowSize } = body as Record<string, unknown>;
+    if ((title !== undefined && typeof title !== "string") ||
+        (windowSize !== undefined && typeof windowSize !== "string") ||
+        !Array.isArray(devLogs) || devLogs.length > 100 ||
+        (typeof title === "string" && title.length > 200) ||
+        (typeof windowSize === "string" && windowSize.length > 100) ||
+        JSON.stringify(devLogs).length > 100_000) {
+      return NextResponse.json({ error: "Invalid or oversized input" }, { status: 400 });
+    }
+
+    const logs: DevLog[] = devLogs.filter((log): log is DevLog => Boolean(log) && typeof log === "object");
     const consoleErrors = logs.filter((l) => l.type === "console");
     const networkErrors = logs.filter((l) => l.type === "network");
     const steps = logs.filter((l) => l.type === "step");

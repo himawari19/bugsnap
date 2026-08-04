@@ -19,16 +19,12 @@ Web dashboard untuk **mazwayScreen** — platform screen recording & bug reporti
 - Badge durasi video, tag, dan status di kartu
 - Edit modal: title, description, password, expiry, tag, status
 
-### Detail Capture (`/captures/[id]`)
+### Detail & Public Share (`/v/[id]`)
 - Preview media (video embed / screenshot)
 - DevTools panel: Info (OS, browser, window size), Console, Network (copy as cURL), Actions
+- Halaman share tanpa login dengan password gate & expiry via RPC `get_public_capture`
 - Komentar + thread reply (real-time via Supabase Realtime)
-
-### Public Share (`/c/[id]`)
-- Halaman publik tanpa login
-- Password gate & expiry (via RPC `get_public_capture` — aman, tidak membocorkan data)
-- Komentar publik
-- Tombol Embed (iframe) + QR code
+- Tombol Embed (iframe)
 - ✨ AI Bug Report (OpenAI, fallback parser lokal)
 
 ### Settings (`/settings`)
@@ -55,14 +51,16 @@ Buka `http://localhost:3000`. Pastikan `.env.local` ada:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+SUPABASE_SERVICE_ROLE_KEY=<service role key> # server only, jangan pakai prefix NEXT_PUBLIC_
 ```
 
 ### Env Opsional
 ```
-OPENAI_API_KEY=...      # AI bug report pakai GPT-4o-mini
-RESEND_API_KEY=...      # weekly digest email
+OPENAI_API_KEY=...       # AI bug report pakai GPT-4o-mini
+STRIPE_WEBHOOK_SECRET=... # verifikasi signature webhook Stripe
+RESEND_API_KEY=...       # weekly digest email
 RESEND_FROM_EMAIL=...
-CRON_SECRET=...         # guard /api/weekly-digest
+CRON_SECRET=...          # Bearer token /api/weekly-digest
 ```
 
 ## Deploy ke Vercel
@@ -77,23 +75,16 @@ prodUrl: 'https://<project>.vercel.app'
 ```
 
 ### Cron (opsional, weekly digest)
-Tambahkan di `vercel.json`:
-```json
-{
-  "crons": [{ "path": "/api/weekly-digest?token=CRON_SECRET", "schedule": "0 9 * * 1" }]
-}
-```
+Panggil `GET /api/weekly-digest` setiap Senin pukul 09:00 dengan header
+`Authorization: Bearer <CRON_SECRET>`. Jangan menaruh secret di query string atau
+path cron.
 
 ## Database (Supabase)
 
-Schema & RPC lengkap ada di:
-- `mazwayScreen/schema.sql` — baseline (users, workspaces, workspace_members, captures)
-- `mazwayScreen/schema-bridge.sql` — email-link bridge (insert_capture_by_email)
-- `mazwayScreen/schema-duration.sql` — kolom duration
-- `mazwayScreen/schema-os-browser.sql` — kolom os/browser
-- `mazwayScreen/schema-phase1.sql` — tabel comments
-- `mazwayScreen/schema-saas-power.sql` — workspace_settings
-- `mazwayScreen/schema-workspace-rpcs.sql` — RPC workspace
+Schema dan RPC yang dikelola repository ini ada di direktori `supabase/`.
+Terapkan migration bernomor secara berurutan pada project baru. Untuk deployment
+lama, review dan backup database sebelum menerapkan migration terbaru; jangan
+menjalankan integration test repository terhadap database produksi.
 
 > ⚠️ **Jangan commit `.env.local`** — sudah di `.gitignore`.
 

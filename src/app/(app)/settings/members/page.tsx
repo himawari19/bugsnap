@@ -31,7 +31,10 @@ export default function TeamManagementPage() {
     (async () => {
       const { data, error } = await supabase.rpc("get_my_workspaces");
       if (error || !data || data.length === 0) {
-        setLoading(false);
+        if (!cancelled) {
+          if (error) setError("Couldn't load workspaces.");
+          setLoading(false);
+        }
         return;
       }
       if (cancelled) return;
@@ -70,16 +73,18 @@ export default function TeamManagementPage() {
     setInviting(true);
     setError(null);
     try {
-      await supabase.rpc("invite_member_by_email", {
+      const { error: inviteError } = await supabase.rpc("invite_member_by_email", {
         p_workspace_id: activeWsId,
         p_email: email,
       });
+      if (inviteError) throw inviteError;
       setInviteEmail("");
       // Reload members
-      const { data } = await supabase.rpc("get_workspace_members", {
+      const { data, error: membersError } = await supabase.rpc("get_workspace_members", {
         p_workspace_id: activeWsId,
       });
-      if (data) setMembers((data as Member[]) ?? []);
+      if (membersError) throw membersError;
+      setMembers((data as Member[]) ?? []);
     } catch (err) {
       setError((err as { message?: string })?.message || "Invite failed.");
     } finally {

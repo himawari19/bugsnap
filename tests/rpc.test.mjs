@@ -232,6 +232,28 @@ test("post_comment: rate limit blocks 6th comment in 10 min", async () => {
   assert.equal(error.code, "P0001", "expected too-many-comments code");
 });
 
+test("post_comment: stores valid video timestamps and rejects invalid ones", async () => {
+  const { data: id } = await insertTestCapture({ p_title: `${TEST_PREFIX} timestamp` });
+  trackCapture(id);
+  const valid = await supabase.rpc("post_comment", {
+    p_capture_id: id,
+    p_visitor_ref: `ts${Date.now()}`,
+    p_body: "timestamped",
+    p_video_timestamp: 83,
+  });
+  assert.equal(valid.error, null);
+  assert.equal(valid.data.video_timestamp, 83);
+
+  const invalid = await supabase.rpc("post_comment", {
+    p_capture_id: id,
+    p_visitor_ref: `ts${Date.now()}`,
+    p_body: "invalid timestamp",
+    p_video_timestamp: -1,
+  });
+  assert.ok(invalid.error);
+  assert.equal(invalid.error.code, "22003");
+});
+
 test("post_comment: reply with parent_id works", async () => {
   const { data: id } = await insertTestCapture({ p_title: `${TEST_PREFIX} reply` });
   trackCapture(id);

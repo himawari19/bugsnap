@@ -133,9 +133,10 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
     setSaving(true);
     setError(null);
 
-    let expiresAt: string | null = null;
-    if (expiry === "24h") expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    if (expiry === "7d") expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const originalExpiry = expiryToOption(capture.expires_at, capture.created_at);
+    let expiresAt: string | null = expiry === originalExpiry ? capture.expires_at ?? null : null;
+    if (expiry !== originalExpiry && expiry === "24h") expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    if (expiry !== originalExpiry && expiry === "7d") expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const allowed_domains = allowedDomainsText.trim() 
       ? allowedDomainsText.split(",").map(d => d.trim().toLowerCase()).filter(Boolean)
@@ -394,11 +395,12 @@ function CapturesContent() {
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (!activeHoverId) return;
-      const shareUrl = `${window.location.origin}/c/${activeHoverId}`;
-      navigator.clipboard?.writeText(shareUrl).catch(() => {});
-      setShortcutCopied(true);
-      if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
-      shortcutToastRef.current = setTimeout(() => setShortcutCopied(false), 2000);
+      const shareUrl = `${window.location.origin}/v/${activeHoverId}`;
+      navigator.clipboard?.writeText(shareUrl).then(() => {
+        setShortcutCopied(true);
+        if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
+        shortcutToastRef.current = setTimeout(() => setShortcutCopied(false), 2000);
+      }).catch(() => setDeleteError("Could not copy the link. Please try again."));
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -545,11 +547,15 @@ function CapturesContent() {
         c.folder_name === folderParam)
   );
 
-  const handleCopyLink = (id: string) => {
-    const shareUrl = `${window.location.origin}/c/${id}`;
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyLink = async (id: string) => {
+    setDeleteError(null);
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/v/${id}`);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setDeleteError("Could not copy the link. Please try again.");
+    }
   };
 
   async function handleDelete(id: string) {
@@ -614,14 +620,7 @@ function CapturesContent() {
     const matchesStatus = !filterStatus || item.status === filterStatus;
 
     const q = search.trim().toLowerCase();
-    const matchesSearch = !q ||
-      item.title.toLowerCase().includes(q) ||
-      (Array.isArray(item.dev_logs) &&
-        item.dev_logs.some((l) =>
-          [l.message, l.text, l.url, l.method]
-            .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(q))
-        ));
+    const matchesSearch = !q || item.title.toLowerCase().includes(q);
 
     return matchesType && matchesTag && matchesStatus && matchesSearch;
   });

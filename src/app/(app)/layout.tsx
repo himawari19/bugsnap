@@ -90,19 +90,23 @@ export default function DashboardLayout({
       try {
         const lastSeenMs = notifLastSeen || Date.now() - 7 * 24 * 60 * 60 * 1000;
         const since = new Date(lastSeenMs).toISOString();
-        const { data: mine } = await supabase
+        const { data: mine, error: capturesError } = await supabase
           .from("captures")
           .select("id")
           .eq("owner_email", email);
+        if (capturesError) throw capturesError;
         const ids = (mine ?? []).map((r) => r.id);
         if (!ids.length) { if (!cancelled) setNewCommentCount(0); return; }
-        const { count } = await supabase
+        const { count, error: commentsError } = await supabase
           .from("comments")
           .select("id", { count: "exact", head: true })
           .in("capture_id", ids)
           .gte("created_at", since);
+        if (commentsError) throw commentsError;
         if (!cancelled) setNewCommentCount(count ?? 0);
-      } catch { /* silent */ }
+      } catch (error) {
+        console.warn("Failed to load notifications:", error);
+      }
     };
     poll();
     const t = setInterval(poll, 60_000);
@@ -123,10 +127,16 @@ export default function DashboardLayout({
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(async ({ data, error }) => {
       if (!active) return;
+      if (error) {
+        console.warn("Failed to load session:", error);
+        setSession({ loading: false, user: null });
+        return;
+      }
       const u = data.session?.user;
       if (!u) {
+        setSession({ loading: false, user: null });
         router.replace("/");
         return;
       }
@@ -210,7 +220,7 @@ export default function DashboardLayout({
           
           // Force set the URL and active state for this newly created workspace
           if (rows[0]?.id) {
-            router.replace(`?ws=${rows[0].id}`, { scroll: false });
+            router.replace(`${pathname}?ws=${rows[0].id}`, { scroll: false });
           }
         }
 
@@ -254,7 +264,7 @@ export default function DashboardLayout({
     return () => {
       active = false;
     };
-  }, [session.user?.id, wsParam, router]);
+  }, [session.user?.id, wsParam, router, pathname]);
 
   // Load the list of unique folders for the active workspace
   useEffect(() => {
@@ -457,7 +467,7 @@ export default function DashboardLayout({
       setWorkspaces((prev) => [...prev, created]);
       setMembers((prev) => ({ ...prev, [created.id]: [] }));
       setActiveWsId(created.id);
-      router.replace(`?ws=${created.id}`, { scroll: false });
+      router.replace(`${pathname}?ws=${created.id}`, { scroll: false });
       setNewWsName("");
       setCreateWsModalOpen(false);
     } catch (err) {
@@ -517,7 +527,7 @@ export default function DashboardLayout({
       const nextActiveId = remaining[0]?.id || null;
       setActiveWsId(nextActiveId);
       if (nextActiveId) {
-        router.replace(`?ws=${nextActiveId}`, { scroll: false });
+        router.replace(`${pathname}?ws=${nextActiveId}`, { scroll: false });
       } else {
         router.replace(pathname, { scroll: false });
       }
