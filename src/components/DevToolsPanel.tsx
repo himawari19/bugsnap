@@ -123,17 +123,58 @@ function groupBy<T extends TimedLog>(items: T[], keyFor: (item: T) => string, ma
   return Array.from(groups.values());
 }
 
+const TRACKER_PATTERNS = [
+  /atlassian\.com/i,
+  /google-analytics\.com/i,
+  /googletagmanager\.com/i,
+  /sentry\.io/i,
+  /mixpanel\.com/i,
+  /hotjar\.com/i,
+  /amplitude\.com/i,
+  /statsig\.com/i,
+  /segment\.io/i,
+  /doubleclick\.net/i,
+  /facebook\.net/i,
+  /analytics/i,
+  /telemetry/i,
+  /tracking/i
+];
+
+function isTracker(url?: string) {
+  if (!url) return false;
+  return TRACKER_PATTERNS.some((pattern) => pattern.test(url));
+}
+
 export default function DevToolsPanel({ capture }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("Info");
   const [logSearch, setLogSearch] = useState("");
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
 
   const logs = Array.isArray(capture.dev_logs) ? capture.dev_logs : [];
+
+  const earliestTimestamp = logs.reduce((min, log) => {
+    const ts = new Date(log.time || log.timestamp || "").getTime();
+    if (Number.isFinite(ts) && (min === 0 || ts < min)) return ts;
+    return min;
+  }, 0);
+
+  const getRelativeTime = (log: TimedLog) => {
+    const value = log.time || log.timestamp;
+    if (!value) return "—";
+    if (/^[+\d].*(?:ms|s|m|h)$/i.test(value)) return value;
+    const ts = new Date(value).getTime();
+    if (!Number.isFinite(ts) || earliestTimestamp === 0) return "—";
+    const elapsed = ts - earliestTimestamp;
+    if (elapsed < 1000) return `${Math.max(0, elapsed)}ms`;
+    if (elapsed < 60000) return `${(elapsed / 1000).toFixed(1)}s`;
+    return `${Math.floor(elapsed / 60000)}m ${Math.floor((elapsed % 60000) / 1000)}s`;
+  };
   
   const networkLogs = logs
     .filter((l): l is NetworkLog => l.type === "network")
     .filter((l) => !l.status || l.status >= 400 || ["warn", "warning", "error"].includes(normalizeLevel(l.level)))
     .filter((l) => {
+      if (isTracker(l.url)) return false;
       const matchesQuery = !logSearch || (l.url || "").toLowerCase().includes(logSearch.toLowerCase());
       const isErr = normalizeLevel(l.level) === "error" || !l.status || l.status >= 500;
       const matchesError = !showErrorsOnly || isErr;
@@ -141,17 +182,21 @@ export default function DevToolsPanel({ capture }: Props) {
     });
 
   const eventTime = (log: TimedLog) => log.time || log.timestamp || "";
-  // The producer already coalesces short bursts in `count`; keep each emitted event
-  // separate so repeats across navigation or later in the recording retain chronology.
-  const diagnosticLogs = logs
-    .filter((log) => ["navigation", "network", "console", "screenshot"].includes(log.type));
-  const consoleLogs = diagnosticLogs.filter((log) => {
-    const detail = log.type === "network" ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
-      : log.type === "console" ? consoleText(log)
-      : log.message || ("url" in log ? log.url : "") || "";
-    const isError = log.type === "console" ? normalizeLevel(log.level) === "error" : log.type === "network";
-    return (!logSearch || detail.toLowerCase().includes(logSearch.toLowerCase())) && (!showErrorsOnly || isError);
-  });
+
+  const consoleLogs = logs
+    .filter((log) => log.type === "console" || log.type === "navigation" || log.type === "screenshot")
+    .filter((log) => {
+      if (log.type === "console") {
+        const level = normalizeLevel(log.level);
+        if (level !== "error" && level !== "warn") return false;
+      }
+      const detail = log.type === "console" ? consoleText(log)
+        : log.message || ("url" in log ? log.url : "") || "";
+      if (isTracker(detail) || ("url" in log && isTracker(log.url))) return false;
+      const isError = log.type === "console" ? normalizeLevel(log.level) === "error" : false;
+      return (!logSearch || detail.toLowerCase().includes(logSearch.toLowerCase())) && (!showErrorsOnly || isError);
+    });
+
   const actionLogs = logs
     .filter((l): l is ActionLog | NavigationLog => l.type === "step" || l.type === "navigation")
     .filter((l) => !logSearch || `${l.message || ""} ${"url" in l ? l.url || "" : ""}`.toLowerCase().includes(logSearch.toLowerCase()));
@@ -200,12 +245,10 @@ export default function DevToolsPanel({ capture }: Props) {
     md += `| **Window size** | ${capture.window_size || "-"} |\n`;
     md += `| **Recorded at** | ${createdAt} |\n\n`;
 
-    if (diagnosticLogs.length > 0) {
-      md += `### Diagnostic Timeline (${totalLogCount(diagnosticLogs)})\n\`\`\`text\n`;
-      diagnosticLogs.forEach((log) => {
-        const detail = log.type === "network"
-          ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
-          : log.type === "console" ? log.message || log.text || "" : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
+    if (consoleLogs.length > 0) {
+      md += `### Diagnostic Timeline (${totalLogCount(consoleLogs)})\n\`\`\`text\n`;
+      consoleLogs.forEach((log) => {
+        const detail = log.type === "console" ? log.message || log.text || "" : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
         md += `[${log.type.toUpperCase()}] ${eventTime(log)} ${detail}${(log.count || 1) > 1 ? ` ×${log.count}` : ""}\n`;
       });
       md += `\`\`\`\n\n`;
@@ -233,14 +276,14 @@ export default function DevToolsPanel({ capture }: Props) {
   }
 
   const tabLabel = (t: Tab) => {
-    if (t === "Console" && diagnosticLogs.length) return `Console (${totalLogCount(diagnosticLogs)})`;
+    if (t === "Console" && consoleLogs.length) return `Console (${totalLogCount(consoleLogs)})`;
     if (t === "Network" && networkLogs.length) return `Network (${totalLogCount(networkLogs)})`;
     if (t === "Actions" && actionLogs.length)  return `Actions (${totalLogCount(actionLogs)})`;
     return t;
   };
 
   return (
-    <div className="w-full lg:w-[360px] border-l border-border bg-white flex flex-col shrink-0 min-h-0 max-h-full">
+    <div className="w-full lg:w-[360px] border-t lg:border-t-0 lg:border-l border-border bg-white flex flex-col shrink-0 h-[450px] lg:h-auto min-h-0 max-h-full">
       {/* Header */}
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-foreground">DevTools</span>
@@ -250,18 +293,18 @@ export default function DevToolsPanel({ capture }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border shrink-0 px-1">
+      <div className="flex border-b border-border shrink-0 px-4 gap-1">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`px-3 py-2.5 text-[11px] font-medium relative transition-colors whitespace-nowrap ${
+            className={`px-2 py-2.5 text-[11px] font-medium relative transition-colors whitespace-nowrap ${
               activeTab === t ? "text-indigo-600" : "text-muted hover:text-foreground"
             }`}
           >
             {tabLabel(t)}
             {activeTab === t && (
-              <span className="absolute bottom-0 left-1 right-1 h-0.5 bg-indigo-600 rounded-full" />
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
             )}
           </button>
         ))}
@@ -421,7 +464,7 @@ export default function DevToolsPanel({ capture }: Props) {
               const fullText = log.type === "console" ? consoleText(log) : detail;
               return (
                 <div key={i} className={`grid grid-cols-[42px_18px_minmax(0,1fr)_auto] gap-1.5 border-b border-border/70 px-2 py-1.5 text-xs ${isWarn ? "bg-amber-50/60" : level === "error" || log.type === "network" ? "bg-red-50/60" : "bg-white"}`}>
-                  <time className="pt-0.5 text-[9px] tabular-nums text-muted" title={eventTime(log)}>{relativeTime(log, capture.created_at)}</time>
+                  <time className="pt-0.5 text-[9px] tabular-nums text-muted" title={eventTime(log)}>{getRelativeTime(log)}</time>
                   <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" || log.type === "network" ? "text-red-600" : "text-muted"}`} aria-label={`${level} event`} title={level}>{isWarn ? "!" : level === "error" || log.type === "network" ? "×" : "•"}</span>
                   <p className="min-w-0 overflow-hidden text-ellipsis break-words leading-4 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={fullText}>{detail}</p>
                   {logCount(log) > 1 && <span className="text-[9px] font-semibold text-muted" aria-label={`Repeated ${logCount(log)} times`}>×{logCount(log)}</span>}
@@ -505,7 +548,7 @@ export default function DevToolsPanel({ capture }: Props) {
                         </div>
                         <div className="flex-1 pb-3">
                           <div className="flex items-center gap-2">
-                            {eventTime(log) && <span className="text-[10px] text-muted font-mono">{eventTime(log)}</span>}
+                            {eventTime(log) && <span className="text-[10px] text-muted font-mono">{getRelativeTime(log)}</span>}
                           </div>
                           <p className="text-xs text-foreground leading-relaxed">{log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}</p>
                         </div>

@@ -229,6 +229,13 @@ export default function Comments({
         p_video_timestamp: video_timestamp,
       });
       if (error) throw error;
+
+      fetch("/api/notifications/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: data }),
+      }).catch((err) => console.error("Failed to send comment notification:", err));
+
       setComments((prev) =>
         prev.map((c) => (c.id === optimisticId ? (data as CommentRow) : c))
       );
@@ -272,6 +279,13 @@ export default function Comments({
         p_parent_id: parentId,
       });
       if (error) throw error;
+
+      fetch("/api/notifications/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: data }),
+      }).catch((err) => console.error("Failed to send comment notification:", err));
+
       setComments((prev) => [...prev, data as CommentRow]);
       setReplyBody("");
       setReplyingTo(null);

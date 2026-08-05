@@ -59,7 +59,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
   return (
     <>
       <div
-        className="relative flex h-[clamp(28rem,72vh,60rem)] min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-[#f4f4f6] p-4 shadow-inner sm:p-6"
+        className="relative flex h-[clamp(16rem,40vh,28rem)] min-h-[16rem] sm:h-[clamp(28rem,72vh,60rem)] sm:min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-[#f4f4f6] p-4 shadow-inner sm:p-6"
       >
         {unavailable ? (
           <div className="px-6 text-center text-sm text-white/70" role="status">Preview unavailable</div>

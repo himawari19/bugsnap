@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import DevToolsPanel, { DevLog } from "@/components/DevToolsPanel";
@@ -47,7 +47,10 @@ function getExpiryCountdown(expiresAt: string): string {
 export default function SingleViewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id;
+
+  const hideDevTools = searchParams.get("devtools") === "false" || searchParams.get("embed") === "true";
 
   const [capture, setCapture] = useState<Capture | null>(null);
   const [status, setStatus] = useState<"loading" | "locked" | "expired" | "notfound" | "unauthorized_ip" | "needs_login" | "unauthorized_domain" | "ready">("loading");
@@ -60,6 +63,8 @@ export default function SingleViewPage() {
   // Modals & Popovers
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareType, setShareType] = useState<"devtools" | "content">("devtools");
   const [aiModal, setAiModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
@@ -304,7 +309,10 @@ export default function SingleViewPage() {
   async function handleCopyLink() {
     if (!capture) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/v/${capture.id}`);
+      const url = shareType === "content"
+        ? `${window.location.origin}/v/${capture.id}?devtools=false`
+        : `${window.location.origin}/v/${capture.id}`;
+      await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -399,8 +407,8 @@ export default function SingleViewPage() {
   const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
   return (
-    <div className="h-screen bg-white flex flex-col font-sans overflow-hidden">
-      <header className="h-14 border-b border-border px-6 flex items-center justify-between shrink-0 bg-white">
+    <div className="h-screen bg-white flex flex-col font-sans overflow-y-auto lg:overflow-hidden">
+      <header className="h-14 border-b border-border px-3 sm:px-6 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-2">
           {brand.logo ? (
             <img src={brand.logo} alt="" className="h-6 w-auto object-contain" />
@@ -408,10 +416,10 @@ export default function SingleViewPage() {
             <span className="text-base font-bold tracking-tight text-foreground">{brand.name}</span>
           )}
           {!brand.hideWatermark && (
-            <span className="text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">Screen Recorder</span>
+            <span className="hidden sm:inline-block text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">Screen Recorder</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {isTeamMember && (
             <Link
               href="/captures"
@@ -420,7 +428,7 @@ export default function SingleViewPage() {
               <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
-              Back to Dashboard
+              <span className="hidden md:inline">Back to Dashboard</span>
             </Link>
           )}
 
@@ -429,7 +437,7 @@ export default function SingleViewPage() {
               onClick={handleGenerateAiReport}
               className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-sm"
             >
-              <span>✨ AI Bug Report</span>
+              <span>✨ <span className="hidden sm:inline">AI Bug Report</span><span className="sm:hidden">AI</span></span>
             </button>
           )}
 
@@ -490,10 +498,98 @@ export default function SingleViewPage() {
             )}
           </div>
 
-          <button onClick={handleCopyLink}
-            className="px-3.5 py-1.5 rounded-lg bg-emerald-400 text-white text-xs font-semibold hover:bg-emerald-500 flex items-center gap-1.5 transition-colors">
-            {copied ? "Copied!" : "Copy Link"}
-          </button>
+          {/* Split Copy Link Button */}
+          <div className="relative flex items-center">
+            <button
+              onClick={handleCopyLink}
+              className="px-3 py-1.5 bg-emerald-400 hover:bg-emerald-500 text-white text-xs font-semibold rounded-l-lg transition-colors border-r border-emerald-500/20"
+            >
+              {copied ? "Copied!" : "Copy link"}
+            </button>
+            <button
+              onClick={() => setShareOpen(!shareOpen)}
+              className="px-2 py-1.5 bg-emerald-400 hover:bg-emerald-500 text-white text-xs rounded-r-lg transition-colors flex items-center justify-center self-stretch"
+              aria-label="Share options"
+            >
+              <svg className={`w-3 h-3 transition-transform ${shareOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Share Popover */}
+            {shareOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShareOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-72 z-50 bg-white border border-border rounded-xl shadow-2xl p-4 flex flex-col gap-4 text-foreground">
+                  <div>
+                    <h3 className="text-[11px] font-bold text-muted uppercase tracking-wider">Share Capture</h3>
+                  </div>
+
+                  {/* Share Cards */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setShareType("devtools")}
+                      className={`p-2.5 rounded-lg border-2 text-left flex flex-col gap-1 transition-all ${
+                        shareType === "devtools"
+                          ? "border-indigo-600 bg-indigo-50/20"
+                          : "border-border hover:border-muted-foreground/30"
+                      }`}
+                    >
+                      <div className="bg-indigo-100/60 rounded p-1 w-fit">
+                        <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold">With DevTools</span>
+                      <span className="text-[8px] text-muted leading-tight">Includes logs, console, and steps</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShareType("content")}
+                      className={`p-2.5 rounded-lg border-2 text-left flex flex-col gap-1 transition-all ${
+                        shareType === "content"
+                          ? "border-indigo-600 bg-indigo-50/20"
+                          : "border-border hover:border-muted-foreground/30"
+                      }`}
+                    >
+                      <div className="bg-emerald-100/60 rounded p-1 w-fit">
+                        <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold">Content Only</span>
+                      <span className="text-[8px] text-muted leading-tight">Clean layout without side logs panel</span>
+                    </button>
+                  </div>
+
+                  {/* General Access Selection */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted uppercase tracking-wider">General Access</label>
+                    <div className="relative">
+                      <select 
+                        disabled
+                        className="w-full bg-subtle border border-border rounded-lg pl-2 pr-7 py-1.5 text-xs text-foreground outline-none font-medium appearance-none cursor-not-allowed"
+                      >
+                        <option>Anyone with the link</option>
+                      </select>
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m19 9-7 7-7-7"/></svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Copy Link Button */}
+                  <button
+                    onClick={handleCopyLink}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    {copied ? "Copied Link!" : "Copy Link"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -567,8 +663,8 @@ export default function SingleViewPage() {
       )}
 
       {status === "ready" && capture && (
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+        <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden min-h-0">
+          <div className="flex-1 lg:overflow-y-auto p-4 sm:p-6 flex flex-col gap-6">
             <MediaViewer type={capture.type} driveUrl={capture.drive_url} title={capture.title} />
 
             {/* Title + Comments */}
@@ -609,7 +705,9 @@ export default function SingleViewPage() {
             </div>
           </div>
 
-          <DevToolsPanel capture={capture as unknown as React.ComponentProps<typeof DevToolsPanel>["capture"]} />
+          {!hideDevTools && (
+            <DevToolsPanel capture={capture as unknown as React.ComponentProps<typeof DevToolsPanel>["capture"]} />
+          )}
         </div>
       )}
 
