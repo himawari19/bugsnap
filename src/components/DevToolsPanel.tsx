@@ -91,17 +91,6 @@ function conciseConsoleText(log: ConsoleLog) {
   return meaningful || lines[0] || "Console error";
 }
 
-function relativeTime(log: TimedLog, startedAt: string) {
-  const value = log.time || log.timestamp;
-  if (!value) return "—";
-  if (/^[+\d].*(?:ms|s|m|h)$/i.test(value)) return value;
-  const elapsed = new Date(value).getTime() - new Date(startedAt).getTime();
-  if (!Number.isFinite(elapsed)) return value;
-  if (elapsed < 1000) return `${Math.max(0, elapsed)}ms`;
-  if (elapsed < 60000) return `${(elapsed / 1000).toFixed(1)}s`;
-  return `${Math.floor(elapsed / 60000)}m ${Math.floor((elapsed % 60000) / 1000)}s`;
-}
-
 function networkLocation(value?: string) {
   try {
     const url = new URL(value || "");
@@ -457,15 +446,14 @@ export default function DevToolsPanel({ capture }: Props) {
               <div className="py-14 text-center text-xs text-muted">No matching console events</div>
             ) : consoleLogs.map((log, i) => {
               const level = log.type === "console" ? normalizeLevel(log.level) : log.type;
-              const isWarn = level === "warn" || (log.type === "network" && !!log.status && log.status < 500);
-              const detail = log.type === "network" ? `${log.method || "GET"} ${log.status || "FAILED"} ${log.url || ""}`
-                : log.type === "console" ? conciseConsoleText(log)
+              const isWarn = level === "warn";
+              const detail = log.type === "console" ? conciseConsoleText(log)
                 : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
               const fullText = log.type === "console" ? consoleText(log) : detail;
               return (
-                <div key={i} className={`grid grid-cols-[42px_18px_minmax(0,1fr)_auto] gap-1.5 border-b border-border/70 px-2 py-1.5 text-xs ${isWarn ? "bg-amber-50/60" : level === "error" || log.type === "network" ? "bg-red-50/60" : "bg-white"}`}>
+                <div key={i} className={`grid grid-cols-[42px_18px_minmax(0,1fr)_auto] gap-1.5 border-b border-border/70 px-2 py-1.5 text-xs ${isWarn ? "bg-amber-50/60" : level === "error" ? "bg-red-50/60" : "bg-white"}`}>
                   <time className="pt-0.5 text-[9px] tabular-nums text-muted" title={eventTime(log)}>{getRelativeTime(log)}</time>
-                  <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" || log.type === "network" ? "text-red-600" : "text-muted"}`} aria-label={`${level} event`} title={level}>{isWarn ? "!" : level === "error" || log.type === "network" ? "×" : "•"}</span>
+                  <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" ? "text-red-600" : "text-muted"}`} aria-label={`${level} event`} title={level}>{isWarn ? "!" : level === "error" ? "×" : "•"}</span>
                   <p className="min-w-0 overflow-hidden text-ellipsis break-words leading-4 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={fullText}>{detail}</p>
                   {logCount(log) > 1 && <span className="text-[9px] font-semibold text-muted" aria-label={`Repeated ${logCount(log)} times`}>×{logCount(log)}</span>}
                 </div>
