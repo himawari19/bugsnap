@@ -8,12 +8,22 @@
 2. **Do NOT use shell command `cat`** to read files. Always use the dedicated `Read` tool (which handles line numbers, pagination, and caching correctly).
 3. **NEVER run `git push`** unless the user explicitly asks in that exact turn.
 
+## Versioning (SemVer — bump before every production deploy)
+
+- **Semantic Versioning**: `MAJOR.MINOR.PATCH`. Bump is REQUIRED whenever this work is about to ship to production.
+  - **MAJOR**: breaking change (API schema break, breaking auth, breaking UI flow). E.g. `0.2.0` → `1.0.0`.
+  - **MINOR**: new user-facing feature (new route, new module, new integration). E.g. `0.1.0` → `0.2.0`.
+  - **PATCH**: bugfix, hotfix, rebrand/copy, dependency bump. E.g. `0.2.0` → `0.2.1`.
+- The more updates in a release, the higher the segment you bump — a batch with one new feature = MINOR; a batch with feature + several fixes = MINOR (or skip PATCH increment). Never ship a prod deploy without a version increase that reflects the size of the change.
+- Version lives in `package.json` (+ sync `package-lock.json` top-level `version` and `packages[""].version`).
+- This applies to both repos: web dashboard here and `bugsnapextension` in `manifest.json` (extension's real release version).
+
 ## Project Overview
 
 BugSnap is a screen-recorder + bug-reporting SaaS (like Jam.dev / Loom):
 
 - **`bugsnap-extension/`** — Chrome MV3 extension. Captures screenshots/recordings, annotates in a canvas editor, uploads to Google Drive, and registers metadata in Supabase.
-- **`bugsnap/`** — Next.js 14 (App Router) web app. Login via Google OAuth (Supabase), analytics dashboard, captures library, public share pages, comments, AI bug reports, workspace/team management.
+- **`bugsnap-dashboard/`** — Next.js 14 (App Router) web app. Login via Google OAuth (Supabase), analytics dashboard, captures library, public share pages, comments, AI bug reports, workspace/team management.
 
 ## Architecture & Data Flow
 
@@ -90,7 +100,7 @@ Extension (capture → Drive upload)
 
 ## Env Vars
 
-### Dashboard (`bugsnap/.env.local`)
+### Dashboard (`bugsnap-dashboard/.env.local`)
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
@@ -119,7 +129,7 @@ const CONFIG = {
 
 ## Testing
 
-- Dashboard: `npm run build` in `bugsnap` MUST pass clean (eslint + types) before any change is considered done.
+- Dashboard: `npm run build` in `bugsnap-dashboard` MUST pass clean (eslint + types) before any change is considered done.
 - Extension: `node --check editor.js` (syntax only). Manual test in Chrome via `chrome://extensions` → Reload.
 - SQL changes: apply via Supabase SQL Editor or Management API (PAT `sbp_*`), then verify with `pg_policies`/`pg_proc` queries.
 - Never assume the DB matches the repo SQL files — always verify against live DB first (tables/functions/policies).
