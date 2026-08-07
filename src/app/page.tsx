@@ -278,10 +278,10 @@ export default function Home() {
             <div className="space-y-3">
               <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.product")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.screenRecorder")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.devTools")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.pricing")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.security")}</a></li>
+                <li><a href="/features" className="hover:text-foreground transition-colors">{t("landing.screenRecorder")}</a></li>
+                <li><a href="/features#devtools" className="hover:text-foreground transition-colors">{t("landing.devTools")}</a></li>
+                <li><a href="/pricing" className="hover:text-foreground transition-colors">{t("landing.pricing")}</a></li>
+                <li><a href="/security" className="hover:text-foreground transition-colors">{t("landing.security")}</a></li>
               </ul>
             </div>
 
@@ -291,8 +291,8 @@ export default function Home() {
               <ul className="space-y-2 text-xs text-muted">
                 <li><a href="https://github.com/himawari19/BugSnap#readme" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
                 <li><a href="https://github.com/himawari19/BugSnap/tree/main/bugsnap-extension" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.help")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.apiStatus")}</a></li>
+                <li><a href="/help" className="hover:text-foreground transition-colors">{t("landing.help")}</a></li>
+                <li><a href="/status" className="hover:text-foreground transition-colors">{t("landing.apiStatus")}</a></li>
               </ul>
             </div>
 
@@ -321,4 +321,5 @@ export default function Home() {
     </div>
   );
 }
+
 
