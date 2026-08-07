@@ -1,4 +1,5 @@
 # BugSnap
+> **BugSnap - From Click to Fix · by akusaradigital.com**
 
 Web dashboard untuk **BugSnap** — platform screen recording & bug reporting ala Jam.dev/Loom.
 
