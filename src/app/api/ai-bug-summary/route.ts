@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     const providers = [];
     const openrouterHeaders = {
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://bugsnap.akusaraproject.my.id",
       "X-Title": "BugSnap",
     };
 

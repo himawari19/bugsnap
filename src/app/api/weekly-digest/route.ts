@@ -59,7 +59,7 @@ export async function GET(req: Request) {
     });
 
     if (!process.env.RESEND_API_KEY) return NextResponse.json({ ok: true, dryRun: true, workspaces: digests.length });
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://bugsnap.akusaraproject.my.id";
 
     for (const digest of digests) {
       const response = await fetch("https://api.resend.com/emails", {

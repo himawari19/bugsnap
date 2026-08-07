@@ -62,20 +62,7 @@ export default function Home() {
       <header className="sticky top-0 z-10 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
           <a href="/" className="flex items-center gap-2.5">
-            <svg viewBox="0 0 128 128" className="w-8 h-8" role="img" aria-label="BugSnap">
-              <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#lg)" />
-              <defs>
-                <linearGradient id="lg" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#18B7E9" />
-                  <stop offset=".54" stopColor="#4C8BF0" />
-                  <stop offset="1" stopColor="#8A42E8" />
-                </linearGradient>
-              </defs>
-              <circle cx="64" cy="64" r="38" fill="#FFF" />
-              <circle cx="64" cy="64" r="28" fill="#27AEBB" />
-              <circle cx="64" cy="64" r="12" fill="#FFF" />
-              <circle cx="64" cy="64" r="5" fill="#5B61DA" />
-            </svg>
+            <img src="/icon.svg" alt="BugSnap" className="w-8 h-8 object-contain" />
             <span className="text-lg font-bold tracking-tight">BugSnap</span>
           </a>
           
@@ -276,20 +263,7 @@ export default function Home() {
             {/* Brand column */}
             <div className="col-span-2 space-y-4">
               <div className="flex items-center gap-2">
-                <svg viewBox="0 0 128 128" className="w-6 h-6" aria-hidden="true">
-                  <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#lgf)" />
-                  <defs>
-                    <linearGradient id="lgf" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
-                      <stop stopColor="#18B7E9" />
-                      <stop offset=".54" stopColor="#4C8BF0" />
-                      <stop offset="1" stopColor="#8A42E8" />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="64" cy="64" r="38" fill="#FFF" />
-                  <circle cx="64" cy="64" r="28" fill="#27AEBB" />
-                  <circle cx="64" cy="64" r="12" fill="#FFF" />
-                  <circle cx="64" cy="64" r="5" fill="#5B61DA" />
-                </svg>
+                <img src="/icon.svg" alt="" aria-hidden="true" className="w-6 h-6 object-contain" />
                 <div className="flex flex-col gap-1">
                   <span className="text-sm font-semibold">BugSnap</span>
                   <span className="text-[11px] text-muted">From Click to Fix. by <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">akusaradigital.com</a></span>

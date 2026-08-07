@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, skipped: "No webhook configured" });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://bugsnap.akusaraproject.my.id";
     const captureUrl = `${appUrl}/v/${captureId}`;
     const typeLabel = capture.type === "video" ? "🎥 Video" : "📸 Screenshot";
 

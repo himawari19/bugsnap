@@ -672,20 +672,7 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full overflow-visible">
         <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
-          <svg viewBox="0 0 128 128" className="w-7 h-7 shrink-0" role="img" aria-label="BugSnap">
-            <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#sidebar-lg)" />
-            <defs>
-              <linearGradient id="sidebar-lg" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#18B7E9" />
-                <stop offset=".54" stopColor="#4C8BF0" />
-                <stop offset="1" stopColor="#8A42E8" />
-              </linearGradient>
-            </defs>
-            <circle cx="64" cy="64" r="38" fill="#FFF" />
-            <circle cx="64" cy="64" r="28" fill="#27AEBB" />
-            <circle cx="64" cy="64" r="12" fill="#FFF" />
-            <circle cx="64" cy="64" r="5" fill="#5B61DA" />
-          </svg>
+          <img src="/icon.svg" alt="BugSnap" className="w-7 h-7 shrink-0 object-contain" />
           <div>
             <h1 className="text-sm font-bold tracking-tight text-foreground leading-none">
               BugSnap

@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, dryRun: true, message: "RESEND_API_KEY not configured" });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://bugsnap.akusaraproject.my.id";
     const captureUrl = `${appUrl}/v/${capture_id}`;
     const mailFrom = process.env.RESEND_FROM_EMAIL || "BugSnap <no-reply@bugsnap.akusaraproject.my.id>";
 

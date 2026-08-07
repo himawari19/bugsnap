@@ -3,7 +3,7 @@ import "./globals.css";
 import { I18nProvider } from "@/components/I18nProvider";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://bugsnap.akusaraproject.my.id"),
   title: "BugSnap - From Click to Fix",
   description:
     "From Click to Fix. by akusaradigital.com",
