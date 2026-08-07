@@ -29,6 +29,9 @@ export default function DashboardLayout({
   const router = useRouter();
   const [wsParam, setWsParam] = useState<string | null>(null);
   const [wsOpen, setWsOpen] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [promoBanner, setPromoBanner] = useState<{ enabled: boolean; message: string } | null>(null);
+  const [promoDismissed, setPromoDismissed] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWsId, setActiveWsId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -68,6 +71,7 @@ export default function DashboardLayout({
   const [session, setSession] = useState<{
     loading: boolean;
     user: null | { id: string; email: string; name: string; avatar: string; plan: "free" | "pro" };
+    suspended?: boolean;
   }>({ loading: true, user: null });
   const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [newCommentCount, setNewCommentCount] = useState(0);
@@ -146,13 +150,21 @@ export default function DashboardLayout({
       // Read the plan from public.users (source of truth updated by the
       // Stripe webhook) so upgrades take effect immediately without re-login.
       let dbPlan: "free" | "pro" = (meta.plan || "free") as "free" | "pro";
+      let suspended = false;
       if (userEmail) {
         const { data: userRow } = await supabase
           .from("users")
-          .select("plan")
+          .select("plan, suspended")
           .ilike("email", userEmail)
           .maybeSingle();
         if (userRow?.plan === "pro") dbPlan = "pro";
+        if (userRow?.suspended) suspended = true;
+      }
+
+      // Block suspended users from the app shell.
+      if (suspended) {
+        setSession({ loading: false, user: null, suspended: true });
+        return;
       }
 
       setSession({
@@ -266,6 +278,50 @@ export default function DashboardLayout({
     };
   }, [session.user?.id, wsParam, router, pathname]);
 
+  // Check if current user is a super admin
+  useEffect(() => {
+    if (!session.user?.id) return;
+    let active = true;
+    (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getSession();
+        const token = authData.session?.access_token;
+        if (!token) return;
+        const res = await fetch("/api/admin/check", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (active && json.isAdmin) {
+          setIsSuperAdmin(true);
+        }
+      } catch {
+        // ignore — admin link simply won't show
+      }
+    })();
+    return () => { active = false; };
+  }, [session.user?.id]);
+
+  // Fetch Promo Banner
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/promo");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (active && json.promo && json.promo.enabled && json.promo.message) {
+          const promoStr = json.promo.message;
+          setPromoBanner(json.promo);
+          // Check if user dismissed this exact message
+          if (localStorage.getItem("mazway_promo_dismissed") === promoStr) {
+            setPromoDismissed(true);
+          }
+        }
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, []);
+
   // Load the list of unique folders for the active workspace
   useEffect(() => {
     if (!activeWsId) return;
@@ -320,6 +376,24 @@ export default function DashboardLayout({
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
           <p className="text-sm text-muted">Loading your dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session.user && session.suspended) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="max-w-md w-full bg-white border border-border rounded-xl p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-bold text-foreground">Account Suspended</h1>
+          <p className="text-sm text-muted mt-2 leading-relaxed">
+            Your Mazway account has been suspended. If you believe this is a mistake, please contact your workspace administrator.
+          </p>
         </div>
       </div>
     );
@@ -579,7 +653,26 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      {promoBanner && promoBanner.enabled && promoBanner.message && !promoDismissed && (
+        <div className="shrink-0 bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0 text-sm font-medium leading-snug text-center">
+            {promoBanner.message}
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss promo"
+            onClick={() => {
+              try { localStorage.setItem("mazway_promo_dismissed", promoBanner.message); } catch {}
+              setPromoDismissed(true);
+            }}
+            className="shrink-0 text-white/80 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+      )}
+    <div className="flex flex-1 min-h-0 bg-background overflow-hidden">
       {/* Sidebar */}
       <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full overflow-visible">
         <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
@@ -823,6 +916,18 @@ export default function DashboardLayout({
               </Link>
             );
           })}
+
+          {isSuperAdmin && (
+            <Link
+              href="/admin"
+              className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                pathname === "/admin" ? "bg-subtle text-foreground" : "text-muted hover:text-foreground hover:bg-subtle"
+              }`}
+            >
+              <span className="text-base" aria-hidden="true">🛡️</span>
+              Super Admin
+            </Link>
+          )}
 
           {/* Google Drive Folders List (Sync Bridge) */}
           <div className="pt-4 space-y-1">
@@ -1349,6 +1454,7 @@ export default function DashboardLayout({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

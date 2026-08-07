@@ -103,6 +103,7 @@ RESEND_API_KEY=...        # enables weekly digest + comment/mention emails
 RESEND_FROM_EMAIL=...     # sender for all outgoing emails
 CRON_SECRET=...           # guards /api/weekly-digest
 NEXT_PUBLIC_APP_URL=...   # canonical app URL, used for share links + email links
+SUPER_ADMIN_EMAILS=...    # comma-separated list of emails allowed to view /admin dashboard
 ```
 
 ### Extension (`mazwayScreen/editor.js` top `CONFIG`)
