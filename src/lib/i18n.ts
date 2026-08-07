@@ -1075,13 +1075,10 @@ function storageGet(key: string): string | null {
 }
 
 export function detectLocale(): Locale {
+  // ponytail: default is always English regardless of browser language;
+  // "id" only applies if a user explicitly saved it via setLocalePref.
   const saved = storageGet("BugSnap.locale");
-  if (saved === "en" || saved === "id") return saved;
-  try {
-    return (navigator.language || "").toLowerCase().startsWith("id") ? "id" : "en";
-  } catch {
-    return "en";
-  }
+  return saved === "id" ? "id" : "en";
 }
 
 export function setLocalePref(locale: Locale): void {
