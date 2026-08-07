@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://mazway-dashboard.vercel.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id"),
   title: "Mazway — Bug reporting made instant",
   description:
     "Capture your screen, attach DevTools context, and share a link your team can open in one click.",
