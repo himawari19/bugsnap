@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 export type CaptureFilter = "all" | "video" | "screenshot";
 
@@ -21,7 +22,7 @@ interface Capture {
   duration?: number | null;
   tag?: string | null;
   status?: string | null;
-  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string; count?: number }[] | null;
+  dev_logs?: { type?: string; level?: string; message?: string; text?: string; url?: string; method?: string; count?: number }[] | { version: number; errors?: number } | null;
   burn_after_read?: boolean;
   allowed_domains?: string[] | null;
   allowed_ips?: string[] | null;
@@ -39,21 +40,21 @@ interface EditModalProps {
   userPlan: "free" | "pro";
 }
 
-const EXPIRY_OPTIONS: { value: "never" | "24h" | "7d"; label: string }[] = [
-  { value: "never", label: "Never" },
-  { value: "24h", label: "24 Hours" },
-  { value: "7d", label: "7 Days" },
+const EXPIRY_OPTIONS: { value: "never" | "24h" | "7d"; labelKey: string }[] = [
+  { value: "never", labelKey: "cap.never" },
+  { value: "24h", labelKey: "cap.hours24" },
+  { value: "7d", labelKey: "cap.days7" },
 ];
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (k: string, vars?: Record<string, string | number>) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return t("time.justNow");
+  if (m < 60) return t("time.minAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return t("time.hrAgo", { n: h });
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return t("time.dayAgo", { n: d });
   // Older than a week → compact date, same as before.
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
@@ -100,7 +101,11 @@ function driveThumbUrl(driveUrl: string, size = 400): string | null {
 }
 
 function consoleErrorCount(item: Capture): number {
-  if (!Array.isArray(item.dev_logs)) return 0;
+  if (!Array.isArray(item.dev_logs)) {
+    // Compact health summary shape (v1): count its errors directly.
+    const s = item.dev_logs as { version?: number; errors?: number } | null | undefined;
+    return typeof s?.errors === "number" ? s.errors : 0;
+  }
   return item.dev_logs
     .filter((l) => l.type === "console" && l.level !== "warn" && l.level !== "warning")
     .reduce((total, log) => total + Math.max(1, Number(log.count) || 1), 0);
@@ -115,6 +120,7 @@ function expiryToOption(expiresAt: string | null | undefined, createdAt: string)
 }
 
 function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
+  const { t } = useT();
   const [title, setTitle] = useState(capture.title);
   const [description, setDescription] = useState(capture.description || "");
   const [password, setPassword] = useState(capture.password || "");
@@ -165,7 +171,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
 
     if (error) {
       console.warn("Error updating capture:", error);
-      setError("Could not save changes. Please try again.");
+      setError(t("cap.saveError"));
       setSaving(false);
       return;
     }
@@ -182,10 +188,10 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
       <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <h2 className="text-base font-bold text-foreground">Edit Capture</h2>
+          <h2 className="text-base font-bold text-foreground">{t("cap.editTitle")}</h2>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="text-muted hover:text-foreground transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -198,33 +204,33 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Title</label>
+            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.titleLabel")}</label>
             <input className={inputClasses} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Description</label>
+            <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.descLabel")}</label>
             <textarea
               className={`${inputClasses} min-h-[72px] resize-none`}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add context for your team..."
+              placeholder={t("cap.descPlaceholder")}
             />
           </div>
 
           <div className="border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-foreground mb-1">Link Settings</h3>
-            <p className="text-xs text-muted mb-4">Control who can view this capture link.</p>
+            <h3 className="text-sm font-semibold text-foreground mb-1">{t("cap.linkSettings")}</h3>
+            <p className="text-xs text-muted mb-4">{t("cap.linkSettingsHint")}</p>
 
             <div className="space-y-4">
               {/* Tag */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Tag</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.tagLabel")}</label>
                 <select
                   className={inputClasses}
                   value={tag}
                   onChange={(e) => setTag(e.target.value)}
                 >
-                  <option value="">No tag</option>
+                  <option value="">{t("cap.noTag")}</option>
                   {TAG_OPTIONS.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
@@ -232,7 +238,7 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
               </div>
               {/* Status */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Status</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.statusLabel")}</label>
                 <select
                   className={inputClasses}
                   value={status}
@@ -244,17 +250,17 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Password Protection</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.passwordLabel")}</label>
                 <input
                   className={inputClasses}
                   type="text"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Leave blank for no password"
+                  placeholder={t("cap.passwordPlaceholder")}
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Expires in</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("cap.expiresLabel")}</label>
                 <div className="inline-flex rounded-lg border border-border bg-subtle p-1 w-full">
                   {EXPIRY_OPTIONS.map((opt) => (
                     <button
@@ -266,28 +272,28 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
                           : "text-muted hover:text-foreground"
                       }`}
                     >
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </button>
                   ))}
                 </div>
                 <p className="text-[11px] text-muted mt-1.5">
                   {expiry === "never"
-                    ? "Link never expires."
-                    : `Link will expire on ${new Date(
+                    ? t("cap.neverExpires")
+                    : t("cap.expiresOn", { date: new Date(
                         Date.now() + (expiry === "24h" ? 24 : 168) * 60 * 60 * 1000
-                      ).toLocaleDateString()}.`}
+                      ).toLocaleDateString() })}
                 </p>
               </div>
 
               {/* Advanced Security Upgrades */}
               <div className="border-t border-border pt-4 space-y-4">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-semibold text-foreground">Advanced Protection</h4>
+                  <h4 className="text-xs font-semibold text-foreground">{t("cap.advancedProtection")}</h4>
                   {userPlan === "free" && (
-                    <span className="bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Pro Only</span>
+                    <span className="bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{t("cap.proOnly")}</span>
                   )}
                 </div>
-                
+
                 {/* Burn after reading */}
                 <label className={`flex items-center gap-2.5 text-xs text-foreground select-none ${userPlan === "free" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
                   <input
@@ -298,41 +304,41 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
                     className="w-4 h-4 rounded border-border text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                   />
                   <div>
-                    <p className="font-medium">Burn-after-reading</p>
-                    <p className="text-[10px] text-muted leading-tight mt-0.5">Link automatically expires after the first view.</p>
+                    <p className="font-medium">{t("cap.burnAfterRead")}</p>
+                    <p className="text-[10px] text-muted leading-tight mt-0.5">{t("cap.burnHint")}</p>
                   </div>
                 </label>
 
                 {/* Domain Whitelist */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-muted">Domain Whitelist</label>
+                    <label className="block text-xs font-medium text-muted">{t("cap.domainWhitelist")}</label>
                   </div>
                   <input
                     type="text"
                     value={allowedDomainsText}
                     disabled={userPlan === "free"}
                     onChange={(e) => setAllowedDomainsText(e.target.value)}
-                    placeholder={userPlan === "free" ? "Upgrade to Pro to restrict domains" : "e.g. tokopedia.com, gojek.com (comma separated)"}
+                    placeholder={userPlan === "free" ? t("cap.domainPlaceholderFree") : t("cap.domainPlaceholder")}
                     className={`${inputClasses} disabled:bg-subtle disabled:text-muted/60 disabled:cursor-not-allowed`}
                   />
-                  <p className="text-[9px] text-muted leading-tight mt-1">Restrict access only to users logging in with these email domains.</p>
+                  <p className="text-[9px] text-muted leading-tight mt-1">{t("cap.domainHint")}</p>
                 </div>
 
                 {/* IP Whitelist */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-muted">IP Whitelist</label>
+                    <label className="block text-xs font-medium text-muted">{t("cap.ipWhitelist")}</label>
                   </div>
                   <input
                     type="text"
                     value={allowedIpsText}
                     disabled={userPlan === "free"}
                     onChange={(e) => setAllowedIpsText(e.target.value)}
-                    placeholder={userPlan === "free" ? "Upgrade to Pro to restrict IPs" : "e.g. 192.168.1.1, 103.88.22.1 (comma separated)"}
+                    placeholder={userPlan === "free" ? t("cap.ipPlaceholderFree") : t("cap.ipPlaceholder")}
                     className={`${inputClasses} disabled:bg-subtle disabled:text-muted/60 disabled:cursor-not-allowed`}
                   />
-                  <p className="text-[9px] text-muted leading-tight mt-1">Only allow access from these IP addresses.</p>
+                  <p className="text-[9px] text-muted leading-tight mt-1">{t("cap.ipHint")}</p>
                 </div>
               </div>
             </div>
@@ -347,14 +353,14 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
             onClick={onClose}
             className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle transition-colors"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
           >
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("settings.saving") : t("cap.saveChanges")}
           </button>
         </div>
       </div>
@@ -363,14 +369,16 @@ function EditModal({ capture, onClose, onSaved, userPlan }: EditModalProps) {
 }
 
 export default function CapturesList() {
+  const { t } = useT();
   return (
-    <Suspense fallback={<div className="p-12 text-center text-sm text-muted">Loading captures...</div>}>
+    <Suspense fallback={<div className="p-12 text-center text-sm text-muted">{t("cap.loading")}</div>}>
       <CapturesContent />
     </Suspense>
   );
 }
 
 function CapturesContent() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const wsParam = searchParams.get("ws");
   const folderParam = searchParams.get("folder");
@@ -403,14 +411,14 @@ function CapturesContent() {
         setShortcutCopied(true);
         if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
         shortcutToastRef.current = setTimeout(() => setShortcutCopied(false), 2000);
-      }).catch(() => setDeleteError("Could not copy the link. Please try again."));
+      }).catch(() => setDeleteError(t("cap.copyError")));
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       if (shortcutToastRef.current) clearTimeout(shortcutToastRef.current);
     };
-  }, [activeHoverId]);
+  }, [activeHoverId, t]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -443,6 +451,9 @@ function CapturesContent() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const pageRef = useRef(0);
+  // Bumped on every filter change; in-flight loadPage() from an old filter
+  // that resolves afterwards is discarded (no stale append to the new list).
+  const loadGenRef = useRef(0);
 
   // Explicit column list (no dev_logs) keeps the grid fast — logs are only
   // needed on the detail page.
@@ -451,6 +462,7 @@ function CapturesContent() {
 
   const loadPage = useCallback(
     async (pageToLoad: number, replace: boolean) => {
+      const gen = loadGenRef.current;
       const from = pageToLoad * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       let query = supabase
@@ -465,6 +477,8 @@ function CapturesContent() {
         query = query.eq("folder_name", folderParam);
       }
       const { data, error } = await query;
+      // Stale response for a filter that changed mid-flight — drop it.
+      if (gen !== loadGenRef.current) return;
       if (error) {
         console.warn("Error fetching captures:", error);
         setHasMore(false);
@@ -481,6 +495,7 @@ function CapturesContent() {
   useEffect(() => {
     let cancelled = false;
     pageRef.current = 0;
+    loadGenRef.current += 1;
     setLoadingMore(false);
     setLoading(true);
     (async () => {
@@ -546,7 +561,7 @@ function CapturesContent() {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
-      setDeleteError("Could not copy the link. Please try again.");
+      setDeleteError(t("cap.copyError"));
     }
   };
 
@@ -568,7 +583,7 @@ function CapturesContent() {
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (sessionError || !token) throw new Error("Your session expired. Please sign in again.");
+      if (sessionError || !token) throw new Error(t("cap.sessionExpired"));
 
       const response = await fetch("/api/google-drive/delete", {
         method: "POST",
@@ -599,12 +614,11 @@ function CapturesContent() {
       }
       if (disconnected) {
         setDriveNotConnected(true);
-        setDeleteError("Google Drive is not connected. Connect Drive, or delete from Mazway only.");
+        setDeleteError(t("cap.driveNotConnected"));
         return;
       }
       if (!response.ok || failedIds.length > 0) {
-        const failedCount = failedIds.length || Math.max(0, deleteRequest.ids.length - deletedIds.length);
-        setDeleteError(result.error ?? result.message ?? `${failedCount} capture${failedCount === 1 ? "" : "s"} could not be deleted. Failed captures were kept.`);
+        setDeleteError(result.error ?? result.message ?? t("cap.deleteFailed"));
         if (deletedIds.length > 0) setDeleteRequest({
           ids: failedIds.length ? failedIds : deleteRequest.ids.filter((id) => !deletedIds.includes(id)),
           operationId: deleteRequest.operationId,
@@ -663,19 +677,19 @@ function CapturesContent() {
     <div className="p-8 max-w-6xl mx-auto">
       {shortcutCopied && activeHoverId && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
-          Copied! Press &quot;C&quot; while hovering to copy the public link.
+          {t("cap.copiedShortcut")}
         </div>
       )}
       {/* Header & Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">All Captures</h1>
-        
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("cap.title")}</h1>
+
         <div className="flex items-center gap-4">
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             <input
               type="text"
-              placeholder="Search captures..."
+              placeholder={t("cap.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 pr-4 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 w-64"
@@ -689,7 +703,7 @@ function CapturesContent() {
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white text-sm font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors disabled:opacity-40"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-                Select
+                {t("cap.select")}
               </button>
               <Link
                 href="/"
@@ -697,13 +711,13 @@ function CapturesContent() {
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-400 text-white text-sm font-medium rounded-lg hover:bg-emerald-500 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-                New Capture
+                {t("cap.newCapture")}
               </Link>
             </>
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted mr-1">
-                {selectedIds.size} selected
+                {t("cap.selected", { count: selectedIds.size })}
               </span>
               <button
                 onClick={() =>
@@ -719,21 +733,21 @@ function CapturesContent() {
                 className="px-3 py-2 rounded-lg border border-border bg-white text-xs font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors"
               >
                 {selectedIds.size === filteredCaptures.length && selectedIds.size > 0
-                  ? "Deselect all"
-                  : "Select all"}
+                  ? t("cap.deselectAll")
+                  : t("cap.selectAll")}
               </button>
               <button
                 onClick={() => openDeleteConfirmation(Array.from(selectedIds))}
                 disabled={selectedIds.size === 0 || deleting}
                 className="px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors"
               >
-                {`Delete ${selectedIds.size || ""}`}
+                {t("cap.deleteSelected", { count: selectedIds.size || "" })}
               </button>
               <button
                 onClick={exitSelectMode}
                 className="px-3 py-2 rounded-lg border border-border bg-white text-xs font-medium text-muted hover:text-foreground hover:bg-subtle transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           )}
@@ -751,7 +765,7 @@ function CapturesContent() {
                 : "bg-white border-border text-muted hover:text-foreground hover:bg-subtle"
             }`}
           >
-            <span>Type</span>
+            <span>{t("cap.type")}</span>
             {(showVideo || showScreenshot) && (
               <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
             )}
@@ -765,7 +779,7 @@ function CapturesContent() {
               <div className="fixed inset-0 z-20" onClick={() => setTypeMenuOpen(false)} />
               <div className="absolute top-full left-0 mt-1.5 w-64 z-30 bg-white border border-border rounded-xl shadow-xl overflow-hidden">
                 <div className="px-3 pt-3 pb-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Type</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{t("cap.type")}</p>
                 </div>
 
                 {/* Screenshot row */}
@@ -780,8 +794,8 @@ function CapturesContent() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium leading-none">Screenshot</p>
-                    <p className="text-[11px] text-muted mt-0.5">Annotated screenshots</p>
+                    <p className="font-medium leading-none">{t("cap.screenshot")}</p>
+                    <p className="text-[11px] text-muted mt-0.5">{t("cap.screenshotHint")}</p>
                   </div>
                   <span className="text-xs text-muted">({screenshotCount})</span>
                 </label>
@@ -798,18 +812,18 @@ function CapturesContent() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium leading-none">Video</p>
-                    <p className="text-[11px] text-muted mt-0.5">Screen recordings</p>
+                    <p className="font-medium leading-none">{t("cap.video")}</p>
+                    <p className="text-[11px] text-muted mt-0.5">{t("cap.videoHint")}</p>
                   </div>
                   <span className="text-xs text-muted">({videoCount})</span>
                 </label>
 
                 <div className="border-t border-border mt-1 px-3 py-2 flex justify-between">
                   <button onClick={() => { setShowVideo(true); setShowScreenshot(true); }} className="text-xs text-muted hover:text-foreground transition-colors">
-                    Select all
+                    {t("cap.selectAll")}
                   </button>
                   <button onClick={() => { setShowVideo(false); setShowScreenshot(false); }} className="text-xs text-muted hover:text-foreground transition-colors">
-                    Clear
+                    {t("cap.clear")}
                   </button>
                 </div>
               </div>
@@ -819,13 +833,13 @@ function CapturesContent() {
 
         {/* Tag Filter */}
         <div className="flex items-center gap-1.5 text-xs border border-border bg-white rounded-lg px-2 py-1.5 text-muted hover:text-foreground hover:bg-subtle transition-colors">
-          <span>Tag:</span>
+          <span>{t("cap.tagFilter")}</span>
           <select
             value={filterTag}
             onChange={(e) => setFilterTag(e.target.value)}
             className="bg-transparent font-medium text-foreground outline-none cursor-pointer"
           >
-            <option value="">All</option>
+            <option value="">{t("cap.all")}</option>
             {TAG_OPTIONS.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
@@ -834,13 +848,13 @@ function CapturesContent() {
 
         {/* Status Filter */}
         <div className="flex items-center gap-1.5 text-xs border border-border bg-white rounded-lg px-2 py-1.5 text-muted hover:text-foreground hover:bg-subtle transition-colors">
-          <span>Status:</span>
+          <span>{t("cap.statusFilter")}</span>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
             className="bg-transparent font-medium text-foreground outline-none cursor-pointer"
           >
-            <option value="">All</option>
+            <option value="">{t("cap.all")}</option>
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -876,20 +890,20 @@ function CapturesContent() {
           </div>
           <div>
             <h3 className="text-base font-semibold text-foreground">
-              {search.trim() || showVideo || showScreenshot ? "No captures match your filters" : "Ready when you are"}
+              {search.trim() || showVideo || showScreenshot ? t("cap.noMatch") : t("cap.empty")}
             </h3>
             <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
               {search.trim() || showVideo || showScreenshot
-                ? "Try a different search or clear the type filters to see everything."
-                : "Use the mazwayScreen browser extension to record or snap your screen — your first capture will appear here instantly."}
+                ? t("cap.noMatchHint")
+                : t("cap.emptyHint")}
             </p>
           </div>
           {!search.trim() && !showVideo && !showScreenshot && (
             <button
-              onClick={() => window.open("https://chrome.google.com/webstore", "_blank")}
+              onClick={() => window.open("https://github.com/himawari19/mazwayScreen", "_blank")}
               className="mt-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
-              Install the Extension
+              {t("cap.install")}
             </button>
           )}
         </div>
@@ -987,18 +1001,18 @@ function CapturesContent() {
                   <div className="absolute top-3 right-10 flex items-center gap-1.5 z-10">
                     {item.expires_at && new Date(item.expires_at).getTime() < Date.now() && (
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-red-100 bg-red-600/80 px-2 py-0.5 rounded backdrop-blur-sm shadow-sm">
-                        Expired
+                        {t("cap.expired")}
                       </span>
                     )}
                     {item.password && (
                       <span className="text-[10px] font-semibold text-amber-100 bg-amber-600/80 px-2 py-0.5 rounded backdrop-blur-sm flex items-center gap-1 shadow-sm">
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-                        Locked
+                        {t("cap.locked")}
                       </span>
                     )}
                     {consoleErrorCount(item) > 0 && (
                       <span className="text-[10px] font-semibold text-red-100 bg-red-600/80 px-2 py-0.5 rounded backdrop-blur-sm shadow-sm">
-                        🔴 {consoleErrorCount(item)} errors
+                        🔴 {t("cap.errors", { count: consoleErrorCount(item) })}
                       </span>
                     )}
                   </div>
@@ -1038,7 +1052,7 @@ function CapturesContent() {
                     {item.title}
                   </h3>
                   <span className="text-muted shrink-0">
-                    {timeAgo(item.created_at)}
+                    {timeAgo(item.created_at, t)}
                   </span>
                   </div>
               </CardWrapper>
@@ -1047,8 +1061,8 @@ function CapturesContent() {
               {!selectMode && (
                 <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
                   <button
-                    aria-label="Copy Link"
-                    title="Copy link"
+                    aria-label={t("cap.copyLink")}
+                    title={t("cap.copyLink")}
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCopyLink(item.id); }}
                     className="w-7 h-7 rounded-md bg-white/90 border border-border text-muted hover:text-emerald-600 hover:bg-emerald-50 flex items-center justify-center shadow-sm transition-colors"
                   >
@@ -1086,7 +1100,7 @@ function CapturesContent() {
                       <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.1-1.1m-.758-4.9a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                       </svg>
-                      {copiedId === item.id ? "Copied!" : "Copy Link"}
+                      {copiedId === item.id ? t("cap.copied") : t("cap.copyLink")}
                     </button>
                     <button
                       onClick={() => {
@@ -1096,7 +1110,7 @@ function CapturesContent() {
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-subtle transition-colors"
                     >
                       <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                      Edit
+                      {t("cap.edit")}
                     </button>
                     <button
                       onClick={() => openDeleteConfirmation([item.id], item.title)}
@@ -1104,7 +1118,7 @@ function CapturesContent() {
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                      Delete
+                      {t("cap.delete")}
                     </button>
                   </div>
                 </>
@@ -1123,7 +1137,7 @@ function CapturesContent() {
           {loadingMore && hasMore && (
             <div className="flex flex-col items-center gap-2">
               <div className="w-7 h-7 border-[3px] border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-              <span className="text-xs text-muted">Loading more captures...</span>
+              <span className="text-xs text-muted">{t("cap.loadingMore")}</span>
             </div>
           )}
         </div>
@@ -1139,23 +1153,23 @@ function CapturesContent() {
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </div>
             <h2 id="delete-captures-title" className="text-lg font-bold text-foreground mb-1">
-              Delete {deleteRequest.ids.length === 1 ? "capture" : `${deleteRequest.ids.length} captures`}?
+              {deleteRequest.ids.length === 1 ? t("cap.deleteTitleOne") : t("cap.deleteTitleMany", { count: deleteRequest.ids.length })}
             </h2>
             <p className="text-sm text-muted mb-5">
-              {deleteRequest.title ? <><span className="font-medium text-foreground">&quot;{deleteRequest.title}&quot;</span> will be removed.</> : "Choose where the selected captures should be removed from."}
+              {deleteRequest.title ? <>{t("cap.deleteWillRemove", { name: deleteRequest.title })}</> : t("cap.deleteChoose")}
             </p>
 
             <div className="space-y-2">
               <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "drive_trash" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
                 <span className="flex gap-3">
                   <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); }} disabled={deleting} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-foreground">Move to Drive trash + delete from Mazway</span><span className="block text-xs text-muted mt-0.5">Default. The Drive files can still be restored from trash.</span></span>
+                  <span><span className="block text-sm font-semibold text-foreground">{t("cap.moveToTrash")}</span><span className="block text-xs text-muted mt-0.5">{t("cap.trashHint")}</span></span>
                 </span>
               </label>
               <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "mazway_only" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
                 <span className="flex gap-3">
                   <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); setDriveNotConnected(false); setDeleteError(null); }} disabled={deleting} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-foreground">Delete from Mazway only</span><span className="block text-xs text-muted mt-0.5">Keep the original files in Google Drive.</span></span>
+                  <span><span className="block text-sm font-semibold text-foreground">{t("cap.mazwayOnly")}</span><span className="block text-xs text-muted mt-0.5">{t("cap.mazwayOnlyHint")}</span></span>
                 </span>
               </label>
             </div>
@@ -1163,15 +1177,15 @@ function CapturesContent() {
             {deleteError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</div>}
             {driveNotConnected && (
               <div className="mt-3 flex items-center gap-3">
-                <Link href="/settings" className="text-sm font-semibold text-indigo-600 hover:underline">Connect Drive</Link>
-                <button onClick={() => { setDeleteMode("mazway_only"); setDriveNotConnected(false); setDeleteError(null); }} className="text-sm font-medium text-foreground hover:underline">Use Mazway-only</button>
+                <Link href="/settings" className="text-sm font-semibold text-indigo-600 hover:underline">{t("cap.connectDrive")}</Link>
+                <button onClick={() => { setDeleteMode("mazway_only"); setDriveNotConnected(false); setDeleteError(null); }} className="text-sm font-medium text-foreground hover:underline">{t("cap.useMazwayOnly")}</button>
               </div>
             )}
 
             <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-border">
-              <button onClick={() => setDeleteRequest(null)} disabled={deleting} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50 transition-colors">Cancel</button>
+              <button onClick={() => setDeleteRequest(null)} disabled={deleting} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50 transition-colors">{t("common.cancel")}</button>
               <button onClick={submitDelete} disabled={deleting} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
-                {deleting ? "Deleting..." : "Confirm delete"}
+                {deleting ? t("layout.deleting") : t("cap.confirmDelete")}
               </button>
             </div>
           </div>

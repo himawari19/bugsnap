@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: "📊" },
-  { label: "All Captures", href: "/captures", icon: "▦" },
+  { labelKey: "nav.dashboard", href: "/dashboard", icon: "📊" },
+  { labelKey: "nav.captures", href: "/captures", icon: "▦" },
 ];
 
 type Workspace = {
@@ -27,6 +28,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useT();
   const [wsParam, setWsParam] = useState<string | null>(null);
   const [wsOpen, setWsOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -94,19 +96,13 @@ export default function DashboardLayout({
       try {
         const lastSeenMs = notifLastSeen || Date.now() - 7 * 24 * 60 * 60 * 1000;
         const since = new Date(lastSeenMs).toISOString();
-        const { data: mine, error: capturesError } = await supabase
-          .from("captures")
-          .select("id")
-          .eq("owner_email", email);
-        if (capturesError) throw capturesError;
-        const ids = (mine ?? []).map((r) => r.id);
-        if (!ids.length) { if (!cancelled) setNewCommentCount(0); return; }
-        const { count, error: commentsError } = await supabase
-          .from("comments")
-          .select("id", { count: "exact", head: true })
-          .in("capture_id", ids)
-          .gte("created_at", since);
-        if (commentsError) throw commentsError;
+        // One SECURITY DEFINER RPC joins comments to the caller's captures and
+        // counts rows newer than `since` — no unbounded fetch-every-id +
+        // oversized .in() on every 60s tick. ponytail: the RPC counts comments
+        // on the caller's own captures; workspace-shared visibility adds
+        // policy complexity — covered by RLS if it's ever needed.
+        const { count, error } = await supabase.rpc("count_unseen_comments", { p_since: since });
+        if (error) throw error;
         if (!cancelled) setNewCommentCount(count ?? 0);
       } catch (error) {
         console.warn("Failed to load notifications:", error);
@@ -375,7 +371,7 @@ export default function DashboardLayout({
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          <p className="text-sm text-muted">Loading your dashboard…</p>
+          <p className="text-sm text-muted">{t("layout.loading")}</p>
         </div>
       </div>
     );
@@ -390,9 +386,9 @@ export default function DashboardLayout({
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
           </div>
-          <h1 className="text-lg font-bold text-foreground">Account Suspended</h1>
+          <h1 className="text-lg font-bold text-foreground">{t("layout.accountSuspended")}</h1>
           <p className="text-sm text-muted mt-2 leading-relaxed">
-            Your Mazway account has been suspended. If you believe this is a mistake, please contact your workspace administrator.
+            {t("layout.suspendedMsg")}
           </p>
         </div>
       </div>
@@ -478,7 +474,7 @@ export default function DashboardLayout({
       setRenameFolderModalOpen(false);
     } catch (err) {
       console.warn("Failed to rename folder:", err);
-      alert("Could not rename folder. Check connection.");
+      alert(t("layout.errRenameFolder"));
     }
   };
 
@@ -509,10 +505,10 @@ export default function DashboardLayout({
       }
       
       setDeleteFolderModalOpen(false);
-      alert(`Folder "${folderToDelete}" queued for deletion on Google Drive.`);
+      alert(t("layout.folderQueued", { name: folderToDelete }));
     } catch (err) {
       console.warn("Failed to delete folder:", err);
-      alert("Could not delete folder. Please try again.");
+      alert(t("layout.errDeleteFolder"));
     } finally {
       setDeletingFolder(false);
     }
@@ -577,13 +573,13 @@ export default function DashboardLayout({
       setRenameWsModalOpen(false);
     } catch (err) {
       console.warn("Failed to rename workspace:", err);
-      alert("Could not rename workspace.");
+      alert(t("layout.errRenameWs"));
     }
   };
 
   const handleDeleteWorkspace = (id: string) => {
     if (workspaces.length <= 1) {
-      alert("You must keep at least one workspace.");
+      alert(t("layout.keepOneWs"));
       return;
     }
     setWsToDelete(id);
@@ -608,7 +604,7 @@ export default function DashboardLayout({
       setDeleteWsModalOpen(false);
     } catch (err) {
       console.warn("Failed to delete workspace:", err);
-      alert("Could not delete workspace.");
+      alert(t("layout.errDeleteWs"));
     } finally {
       setDeletingWs(false);
     }
@@ -620,7 +616,7 @@ export default function DashboardLayout({
 
     // SaaS Seats Limit: Max 5 members on Free tier
     if (currentUser.plan === "free" && activeMembers.length >= 4) {
-      setInviteError("Free workspaces are limited to 5 members. Upgrade to Pro for unlimited seats.");
+      setInviteError(t("layout.seatLimit"));
       return;
     }
 
@@ -645,7 +641,7 @@ export default function DashboardLayout({
       // (sending an actual invite mail) is a future task.
       setInviteError(
         (err as { message?: string })?.message ||
-          "Could not send invite. Please try again."
+          t("layout.errInvite")
       );
     } finally {
       setInviting(false);
@@ -661,7 +657,7 @@ export default function DashboardLayout({
           </div>
           <button
             type="button"
-            aria-label="Dismiss promo"
+            aria-label={t("layout.dismissPromo")}
             onClick={() => {
               try { localStorage.setItem("mazway_promo_dismissed", promoBanner.message); } catch {}
               setPromoDismissed(true);
@@ -694,7 +690,7 @@ export default function DashboardLayout({
             <h1 className="text-sm font-bold tracking-tight text-foreground leading-none">
               Mazway
             </h1>
-            <p className="text-[10px] text-muted mt-1 leading-none font-medium">Screen Recorder</p>
+            <p className="text-[10px] text-muted mt-1 leading-none font-medium">{t("layout.screenRecorder")}</p>
           </div>
 
           {/* Notification Bell */}
@@ -702,7 +698,7 @@ export default function DashboardLayout({
             <button
               onClick={() => setNotifOpen((o) => !o)}
               className="relative p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-subtle transition-colors"
-              aria-label="Notifications"
+              aria-label={t("layout.notifications")}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -720,13 +716,13 @@ export default function DashboardLayout({
                 <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} onWheel={() => setNotifOpen(false)} />
                 <div className="fixed left-4 top-16 z-50 w-64 rounded-xl border border-border bg-white shadow-xl py-2 px-1">
                   <div className="flex items-center justify-between px-3 py-1 mb-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Notifications</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{t("layout.notifications")}</p>
                     {newCommentCount > 0 && (
                       <button
                         onClick={handleClearNotifications}
                         className="text-[10px] font-semibold text-indigo-600 hover:underline"
                       >
-                        Clear all
+                        {t("layout.clearAll")}
                       </button>
                     )}
                   </div>
@@ -738,11 +734,11 @@ export default function DashboardLayout({
                         router.push("/captures");
                       }}
                     >
-                      <p className="font-medium">💬 {newCommentCount} new comment{newCommentCount > 1 ? "s" : ""} on your captures</p>
+                      <p className="font-medium">💬 {t(newCommentCount > 1 ? "notif.newComments" : "notif.newComment", { count: newCommentCount })}</p>
                     </div>
                   ) : (
                     <div className="px-3 py-4 text-center">
-                      <p className="text-xs text-muted/60">No new notifications</p>
+                      <p className="text-xs text-muted/60">{t("layout.noNotifications")}</p>
                     </div>
                   )}
                 </div>
@@ -754,7 +750,7 @@ export default function DashboardLayout({
         {/* Workspace Switcher */}
         <div className="px-3 pt-4 relative">
           <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Workspace
+            {t("layout.workspace")}
           </p>
           <button
             onClick={() => setWsOpen((o) => !o)}
@@ -774,7 +770,7 @@ export default function DashboardLayout({
               <div className="fixed inset-0 z-40" onClick={() => setWsOpen(false)} />
               <div className="absolute left-3 right-3 top-[calc(100%+4px)] z-50 rounded-xl border border-border bg-white shadow-xl py-2 px-1">
                 <div className="px-3 py-1 mb-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Workspaces</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{t("layout.workspaces")}</p>
                 </div>
                 {workspaces.map((ws) => (
                   <div
@@ -805,7 +801,7 @@ export default function DashboardLayout({
                         </svg>
                       )}
                     </button>
-                    
+
                     {/* Workspace Actions (Rename & Delete) — visible only for owners */}
                     {ws.role === "owner" && (
                       <div className="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 pr-1">
@@ -814,7 +810,7 @@ export default function DashboardLayout({
                             e.stopPropagation();
                             handleRenameWorkspace(ws.id, ws.name);
                           }}
-                          title="Rename Workspace"
+                          title={t("layout.renameWorkspace")}
                           className="p-1 rounded text-muted hover:text-foreground hover:bg-neutral-200/50 transition-colors"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -826,7 +822,7 @@ export default function DashboardLayout({
                             e.stopPropagation();
                             handleDeleteWorkspace(ws.id);
                           }}
-                          title="Delete Workspace"
+                          title={t("layout.deleteWorkspaceQ")}
                           className="p-1 rounded text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -842,7 +838,7 @@ export default function DashboardLayout({
                 <div className="border-t border-border mt-2 pt-2 px-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                      Members ({1 + activeMembers.length})
+                      {t("layout.membersCount", { count: 1 + activeMembers.length })}
                     </span>
                     <button
                       onClick={() => {
@@ -851,7 +847,7 @@ export default function DashboardLayout({
                       }}
                       className="text-[10px] font-semibold text-indigo-600 hover:underline"
                     >
-                      + Invite
+                      {t("layout.invite")}
                     </button>
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -861,7 +857,7 @@ export default function DashboardLayout({
                         {initials}
                       </span>
                       <span className="truncate flex-1 font-medium">{currentUser.name}</span>
-                      <span className="text-[9px] font-semibold text-muted bg-subtle px-1 py-0.5 rounded">Owner</span>
+                      <span className="text-[9px] font-semibold text-muted bg-subtle px-1 py-0.5 rounded">{t("layout.owner")}</span>
                     </div>
                     {/* Invited members */}
                     {activeMembers.map((m) => (
@@ -870,7 +866,7 @@ export default function DashboardLayout({
                           {m.charAt(0).toUpperCase()}
                         </span>
                         <span className="truncate flex-1 text-muted">{m}</span>
-                        <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">Member</span>
+                        <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">{t("layout.member")}</span>
                       </div>
                     ))}
                   </div>
@@ -887,7 +883,7 @@ export default function DashboardLayout({
                     <span className="w-5 h-5 rounded border border-dashed border-muted/40 text-muted group-hover:border-indigo-400 group-hover:text-indigo-600 text-xs leading-none flex items-center justify-center shrink-0">
                       +
                     </span>
-                    Create new workspace
+                    {t("layout.createNewWorkspace")}
                   </button>
                 </div>
               </div>
@@ -912,7 +908,7 @@ export default function DashboardLayout({
                 }`}
               >
                 <span className="text-base" aria-hidden="true">{item.icon}</span>
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}
@@ -925,7 +921,7 @@ export default function DashboardLayout({
               }`}
             >
               <span className="text-base" aria-hidden="true">🛡️</span>
-              Super Admin
+              {t("nav.admin")}
             </Link>
           )}
 
@@ -936,13 +932,13 @@ export default function DashboardLayout({
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
                 </svg>
-                Folders
+                {t("layout.folders")}
               </p>
               <button
                 onClick={() => setCreateFolderModalOpen(true)}
                 className="text-[10px] font-bold text-indigo-600 hover:underline"
               >
-                + Create
+                {t("layout.create")}
               </button>
             </div>
             
@@ -976,7 +972,7 @@ export default function DashboardLayout({
                             e.stopPropagation();
                             handleRenameFolder(folder);
                           }}
-                          title="Rename Folder"
+                          title={t("layout.renameFolder")}
                           className="p-1 rounded text-muted hover:text-foreground hover:bg-neutral-200/50 transition-colors"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -989,7 +985,7 @@ export default function DashboardLayout({
                             e.stopPropagation();
                             handleDeleteFolder(folder);
                           }}
-                          title="Delete Folder"
+                          title={t("layout.deleteFolderTitle")}
                           className="p-1 rounded text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1004,12 +1000,12 @@ export default function DashboardLayout({
               
               {folders.length === 0 && (
                 <div className="px-3 py-2 text-center rounded-lg border border-dashed border-border/80 mx-1 bg-subtle/30">
-                  <p className="text-[10px] text-muted">No folders yet.</p>
+                  <p className="text-[10px] text-muted">{t("layout.noFolders")}</p>
                   <button
                     onClick={() => setCreateFolderModalOpen(true)}
                     className="text-[10px] font-semibold text-indigo-600 hover:underline mt-1"
                   >
-                    Create a folder
+                    {t("layout.createFolder")}
                   </button>
                 </div>
               )}
@@ -1020,13 +1016,13 @@ export default function DashboardLayout({
         {/* SaaS Upgrade CTA (Free tier only) */}
         {currentUser.plan !== "pro" && (
           <div className="px-4 py-3 mx-3 mb-3 bg-indigo-50 border border-indigo-100 rounded-xl">
-            <h5 className="text-[11px] font-bold text-indigo-900 tracking-wide uppercase">Upgrade to Pro</h5>
-            <p className="text-[10px] text-indigo-700 leading-tight mt-1 mb-2.5">Unlock E2EE, IP Whitelist, seats limits, and E2E security.</p>
+            <h5 className="text-[11px] font-bold text-indigo-900 tracking-wide uppercase">{t("layout.upgradeToPro")}</h5>
+            <p className="text-[10px] text-indigo-700 leading-tight mt-1 mb-2.5">{t("layout.upgradeDesc")}</p>
             <button
               onClick={() => setBillingModalOpen(true)}
               className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors text-center block"
             >
-              Upgrade Now
+              {t("layout.upgradeNow")}
             </button>
           </div>
         )}
@@ -1070,7 +1066,7 @@ export default function DashboardLayout({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  Settings
+                  {t("nav.settings")}
                 </Link>
                 <button
                   onClick={async () => {
@@ -1082,7 +1078,7 @@ export default function DashboardLayout({
                   <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  Sign out
+                  {t("nav.signOut")}
                 </button>
               </div>
             </>
@@ -1098,13 +1094,13 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setInviteModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-1">Invite to Workspace</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("layout.inviteToWorkspace")}</h2>
             <p className="text-sm text-muted mb-5">
-              Add members to <span className="font-semibold text-foreground">{activeWsName}</span> so they can view and collaborate on captures.
+              {t("layout.inviteDescPre")} <span className="font-semibold text-foreground">{activeWsName}</span> {t("layout.inviteDescPost")}
             </p>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Email Address</label>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("layout.emailAddress")}</label>
                 <input
                   type="email"
                   value={inviteEmail}
@@ -1123,14 +1119,14 @@ export default function DashboardLayout({
                 onClick={() => setInviteModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={handleInvite}
                 disabled={!inviteEmail.trim() || inviting}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                Send Invite
+                {t("layout.sendInvite")}
               </button>
             </div>
           </div>
@@ -1142,12 +1138,12 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setCreateWsModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-1">Create Workspace</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("layout.createWorkspace")}</h2>
             <p className="text-sm text-muted mb-5">
-              Workspaces let you organize captures and members separately &mdash; e.g. by team or project.
+              {t("layout.createWorkspaceDesc")}
             </p>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Workspace Name</label>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("layout.workspaceName")}</label>
               <input
                 type="text"
                 value={newWsName}
@@ -1170,7 +1166,7 @@ export default function DashboardLayout({
                 onClick={() => setCreateWsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={() => {
@@ -1180,7 +1176,7 @@ export default function DashboardLayout({
                 disabled={!newWsName.trim() || creating}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                Create Workspace
+                {t("layout.createWorkspace")}
               </button>
             </div>
           </div>
@@ -1192,30 +1188,30 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setBillingModalOpen(false)} />
           <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border p-6 text-center">
-            <h2 className="text-xl font-bold text-foreground mb-1">Upgrade to Mazway Pro</h2>
+            <h2 className="text-xl font-bold text-foreground mb-1">{t("layout.upgradeTitle")}</h2>
             <p className="text-sm text-muted mb-6">
-              Get advanced security, unrestricted teams, and premium developer capabilities.
+              {t("layout.upgradeSub")}
             </p>
-            
+
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="p-4 rounded-xl border border-border bg-subtle text-left">
-                <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Free Plan</span>
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider">{t("layout.freePlan")}</span>
                 <p className="text-2xl font-extrabold text-foreground mt-1">$0</p>
                 <ul className="text-[11px] text-muted space-y-1.5 mt-3">
-                  <li>• Max 5 team members</li>
-                  <li>• Basic share links</li>
-                  <li>• Basic analytics</li>
+                  <li>• {t("layout.free1")}</li>
+                  <li>• {t("layout.free2")}</li>
+                  <li>• {t("layout.free3")}</li>
                 </ul>
               </div>
               <div className="p-4 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 text-left relative overflow-hidden">
-                <span className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">Popular</span>
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Pro Plan</span>
+                <span className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">{t("layout.popular")}</span>
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">{t("layout.proPlan")}</span>
                 <p className="text-2xl font-extrabold text-foreground mt-1">$15<span className="text-xs font-normal text-muted">/mo</span></p>
                 <ul className="text-[11px] text-indigo-950 space-y-1.5 mt-3">
-                  <li>• Unlimited members</li>
-                  <li>• E2EE log protection</li>
-                  <li>• IP & Domain whitelist</li>
-                  <li>• Burn-after-reading</li>
+                  <li>• {t("layout.pro1")}</li>
+                  <li>• {t("layout.pro2")}</li>
+                  <li>• {t("layout.pro3")}</li>
+                  <li>• {t("layout.pro4")}</li>
                 </ul>
               </div>
             </div>
@@ -1225,7 +1221,7 @@ export default function DashboardLayout({
                 onClick={() => setBillingModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={async () => {
@@ -1240,12 +1236,12 @@ export default function DashboardLayout({
                     window.location.reload();
                   } catch (err) {
                     console.warn("Upgrade error:", err);
-                    alert("Could not complete mock checkout.");
+                    alert(t("layout.errMockCheckout"));
                   }
                 }}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
               >
-                Simulate Payment & Upgrade
+                {t("layout.mockUpgrade")}
               </button>
             </div>
           </div>
@@ -1257,12 +1253,12 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setCreateFolderModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-1">Create Folder</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("layout.createFolderTitle")}</h2>
             <p className="text-sm text-muted mb-5">
-              Folders are synced with your Google Drive. Captures uploaded to this folder will be organized physically under this name in your Drive.
+              {t("layout.createFolderDesc")}
             </p>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Folder Name</label>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("layout.folderName")}</label>
               <input
                 type="text"
                 value={newFolderName}
@@ -1285,14 +1281,14 @@ export default function DashboardLayout({
                 onClick={() => setCreateFolderModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={() => handleCreateFolder(newFolderName.trim())}
                 disabled={!newFolderName.trim() || creatingFolder}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                {creatingFolder ? "Creating..." : "Create Folder"}
+                {creatingFolder ? t("layout.creating") : t("layout.createFolderTitle")}
               </button>
             </div>
           </div>
@@ -1304,12 +1300,12 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setRenameFolderModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-1">Rename Folder</h2>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("layout.renameFolder")}</h2>
             <p className="text-sm text-muted mb-5">
-              Enter a new name for this folder. The change will sync to Google Drive.
+              {t("layout.renameFolderDesc")}
             </p>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">New Folder Name</label>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("layout.newFolderName")}</label>
               <input
                 type="text"
                 value={renameFolderNameInput}
@@ -1329,14 +1325,14 @@ export default function DashboardLayout({
                 onClick={() => setRenameFolderModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={submitRenameFolder}
                 disabled={!renameFolderNameInput.trim() || renameFolderNameInput.trim() === folderToRename}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                Save Changes
+                {t("layout.saveChanges")}
               </button>
             </div>
           </div>
@@ -1353,10 +1349,9 @@ export default function DashboardLayout({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-foreground mb-2">Delete Folder?</h2>
+            <h2 className="text-lg font-bold text-foreground mb-2">{t("layout.deleteFolderQ")}</h2>
             <p className="text-xs text-muted leading-relaxed mb-6">
-              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{folderToDelete}&quot;</span>?<br/>
-              <span className="text-red-600 font-medium">WARNING:</span> All captures inside this folder will be permanently deleted from this dashboard and Google Drive.
+              {t("layout.deleteFolderDesc", { name: folderToDelete ?? "" })}
             </p>
             
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
@@ -1364,14 +1359,14 @@ export default function DashboardLayout({
                 onClick={() => setDeleteFolderModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={submitDeleteFolder}
                 disabled={deletingFolder}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
-                {deletingFolder ? "Deleting..." : "Delete Folder"}
+                {deletingFolder ? t("layout.deleting") : t("layout.deleteFolderTitle")}
               </button>
             </div>
           </div>
@@ -1383,10 +1378,10 @@ export default function DashboardLayout({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setRenameWsModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-1">Rename Workspace</h2>
-            <p className="text-sm text-muted mb-5">Enter a new name for this workspace.</p>
+            <h2 className="text-lg font-bold text-foreground mb-1">{t("layout.renameWorkspace")}</h2>
+            <p className="text-sm text-muted mb-5">{t("layout.renameWsDesc")}</p>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">Workspace Name</label>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-muted mb-1.5">{t("layout.workspaceName")}</label>
               <input
                 type="text"
                 value={renameWsNameInput}
@@ -1406,14 +1401,14 @@ export default function DashboardLayout({
                 onClick={() => setRenameWsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={submitRenameWorkspace}
                 disabled={!renameWsNameInput.trim()}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                Save Changes
+                {t("layout.saveChanges")}
               </button>
             </div>
           </div>
@@ -1430,25 +1425,24 @@ export default function DashboardLayout({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-foreground mb-2">Delete Workspace?</h2>
+            <h2 className="text-lg font-bold text-foreground mb-2">{t("layout.deleteWorkspaceQ")}</h2>
             <p className="text-xs text-muted leading-relaxed mb-6">
-              Are you sure you want to delete this workspace?<br/>
-              <span className="text-red-600 font-medium">WARNING:</span> All its members and captures will be permanently deleted.
+              {t("layout.deleteWsDesc")}
             </p>
-            
+
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <button
                 onClick={() => setDeleteWsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={submitDeleteWorkspace}
                 disabled={deletingWs}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
-                {deletingWs ? "Deleting..." : "Delete Workspace"}
+                {deletingWs ? t("layout.deleting") : t("layout.deleteWorkspaceQ")}
               </button>
             </div>
           </div>

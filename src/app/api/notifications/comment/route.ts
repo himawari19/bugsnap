@@ -152,7 +152,11 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, sent: true, mentions: Array.from(mentionEmails) });
+    // ponytail: no `mentions` in the response — it leaked member emails to any
+    // anonymous caller (enumeration + spam vector) and the client never
+    // consumes it (Comments.tsx). Emails are still resolved server-side for
+    // the Resend notifications; the response carries only ok/sent.
+    return NextResponse.json({ ok: true, sent: true });
   } catch (error) {
     console.error("Failed to send comment notification email:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

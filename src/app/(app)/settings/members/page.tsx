@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 interface Member {
   user_id: string;
@@ -18,6 +19,7 @@ interface Workspace {
 }
 
 export default function TeamManagementPage() {
+  const { t } = useT();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWsId, setActiveWsId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -32,7 +34,7 @@ export default function TeamManagementPage() {
       const { data, error } = await supabase.rpc("get_my_workspaces");
       if (error || !data || data.length === 0) {
         if (!cancelled) {
-          if (error) setError("Couldn't load workspaces.");
+          if (error) setError(t("members.loadWsError"));
           setLoading(false);
         }
         return;
@@ -45,7 +47,7 @@ export default function TeamManagementPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!activeWsId) return;
@@ -57,7 +59,7 @@ export default function TeamManagementPage() {
         if (cancelled) return;
         setLoading(false);
         if (error) {
-          setError("Couldn't load members.");
+          setError(t("members.loadError"));
           return;
         }
         setMembers((data as Member[]) ?? []);
@@ -65,7 +67,7 @@ export default function TeamManagementPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeWsId]);
+  }, [activeWsId, t]);
 
   async function handleInvite() {
     const email = inviteEmail.trim();
@@ -86,7 +88,7 @@ export default function TeamManagementPage() {
       if (membersError) throw membersError;
       setMembers((data as Member[]) ?? []);
     } catch (err) {
-      setError((err as { message?: string })?.message || "Invite failed.");
+      setError((err as { message?: string })?.message || t("members.inviteFailed"));
     } finally {
       setInviting(false);
     }
@@ -94,7 +96,7 @@ export default function TeamManagementPage() {
 
   async function handleRemove(member: Member) {
     if (member.role === "owner") return;
-    if (!confirm(`Remove ${member.email} from this workspace?`)) return;
+    if (!confirm(t("members.removeConfirm", { email: member.email }))) return;
     try {
       const { error } = await supabase
         .from("workspace_members")
@@ -104,7 +106,7 @@ export default function TeamManagementPage() {
       if (error) throw error;
       setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
     } catch {
-      setError("Couldn't remove member.");
+      setError(t("members.removeError"));
     }
   }
 
@@ -112,17 +114,17 @@ export default function TeamManagementPage() {
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Team Members</h1>
-          <p className="text-sm text-muted mt-1">Manage who has access to your workspace captures.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("members.title")}</h1>
+          <p className="text-sm text-muted mt-1">{t("members.subtitle")}</p>
         </div>
         <Link href="/settings" className="text-sm text-indigo-600 font-medium hover:underline">
-          ← Back to Settings
+          {t("members.backToSettings")}
         </Link>
       </div>
 
       {/* Workspace selector */}
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">Workspace</label>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">{t("members.workspaceLabel")}</label>
         <select
           value={activeWsId ?? ""}
           onChange={(e) => setActiveWsId(e.target.value)}
@@ -136,8 +138,8 @@ export default function TeamManagementPage() {
 
       {/* Invite box */}
       <div className="rounded-xl border border-border bg-white p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-1">Invite Member</h2>
-        <p className="text-xs text-muted mb-3">They must already have a Mazway account (sign in with the same email).</p>
+        <h2 className="text-sm font-semibold text-foreground mb-1">{t("members.inviteTitle")}</h2>
+        <p className="text-xs text-muted mb-3">{t("members.inviteHint")}</p>
         <div className="flex gap-2">
           <input
             type="email"
@@ -152,7 +154,7 @@ export default function TeamManagementPage() {
             disabled={inviting || !inviteEmail.trim()}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
-            {inviting ? "Inviting..." : "Invite"}
+            {inviting ? t("members.inviting") : t("members.invite")}
           </button>
         </div>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
@@ -161,7 +163,7 @@ export default function TeamManagementPage() {
       {/* Member list */}
       <div className="rounded-xl border border-border bg-white overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-subtle/50">
-          <h2 className="text-sm font-semibold text-foreground">Members ({members.length})</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t("members.count", { count: members.length })}</h2>
         </div>
         {loading ? (
           <div className="divide-y divide-border/60 animate-pulse">
@@ -177,7 +179,7 @@ export default function TeamManagementPage() {
             ))}
           </div>
         ) : members.length === 0 ? (
-          <p className="p-6 text-sm text-muted">No members yet. Invite someone to get started.</p>
+          <p className="p-6 text-sm text-muted">{t("members.none")}</p>
         ) : (
           <ul className="divide-y divide-border/60">
             {members.map((m) => (
@@ -193,9 +195,9 @@ export default function TeamManagementPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">
                     {m.full_name || m.email}
-                    {m.role === "owner" && <span className="ml-2 text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">Owner</span>}
-                    {m.role === "admin" && <span className="ml-2 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">Admin</span>}
-                    {m.role === "member" && <span className="ml-2 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Member</span>}
+                    {m.role === "owner" && <span className="ml-2 text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">{t("members.owner")}</span>}
+                    {m.role === "admin" && <span className="ml-2 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{t("members.admin")}</span>}
+                    {m.role === "member" && <span className="ml-2 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{t("members.member")}</span>}
                   </p>
                   <p className="text-xs text-muted truncate">{m.email}</p>
                 </div>
@@ -204,7 +206,7 @@ export default function TeamManagementPage() {
                     onClick={() => handleRemove(m)}
                     className="text-xs font-medium text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-colors"
                   >
-                    Remove
+                    {t("members.remove")}
                   </button>
                 )}
               </li>

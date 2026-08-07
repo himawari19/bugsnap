@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 interface AdminStats {
   totalUsers: number;
@@ -35,6 +36,7 @@ interface Promo {
 }
 
 export default function AdminDashboardPage() {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{ stats: AdminStats; users: AdminUser[]; topWorkspaces: TopWorkspace[]; promo: Promo } | null>(null);
@@ -59,18 +61,18 @@ export default function AdminDashboardPage() {
       try {
         const { data: authData } = await supabase.auth.getSession();
         const token = authData.session?.access_token;
-        if (!token) throw new Error("Not logged in");
+        if (!token) throw new Error(t("admin.notLoggedIn"));
 
         const res = await fetch("/api/admin/data", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         if (res.status === 403) {
-          throw new Error("Access restricted: You do not have super admin privileges.");
+          throw new Error(t("admin.accessRestricted"));
         }
 
         const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Failed to load admin data");
+        if (!res.ok) throw new Error(json.error || t("admin.loadFailed"));
 
         if (!cancelled) {
           setData(json);
@@ -79,7 +81,7 @@ export default function AdminDashboardPage() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Unknown error");
+          setError(err instanceof Error ? err.message : t("common.error"));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -91,7 +93,7 @@ export default function AdminDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const [actingUserId, setActingUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -102,7 +104,7 @@ export default function AdminDashboardPage() {
     try {
       const { data: authData } = await supabase.auth.getSession();
       const token = authData.session?.access_token;
-      if (!token) throw new Error("Not logged in");
+      if (!token) throw new Error(t("admin.notLoggedIn"));
 
       const res = await fetch("/api/admin/toggle-suspend", {
         method: "POST",
@@ -113,12 +115,12 @@ export default function AdminDashboardPage() {
         body: JSON.stringify({ user_id: userId, suspended }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to update user");
+      if (!res.ok) throw new Error(json.error || t("admin.updateFailed"));
 
       // Update local state for instant UI feedback
       setData((prev) => prev ? { ...prev, users: prev.users.map((u) => u.id === userId ? { ...u, suspended } : u) } : prev);
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : "Failed to update user");
+      setActionError(err instanceof Error ? err.message : t("admin.updateFailed"));
     } finally {
       setActingUserId(null);
     }
@@ -130,7 +132,7 @@ export default function AdminDashboardPage() {
     try {
       const { data: authData } = await supabase.auth.getSession();
       const token = authData.session?.access_token;
-      if (!token) throw new Error("Not logged in");
+      if (!token) throw new Error(t("admin.notLoggedIn"));
 
       const res = await fetch("/api/admin/promo", {
         method: "POST",
@@ -138,11 +140,11 @@ export default function AdminDashboardPage() {
         body: JSON.stringify({ message: promoMessage, enabled: promoEnabled }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to save promo banner");
+      if (!res.ok) throw new Error(json.error || t("admin.promoSaveFailed"));
       setPromoSaved(true);
       setTimeout(() => setPromoSaved(false), 3000);
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : "Failed to save promo banner");
+      setActionError(err instanceof Error ? err.message : t("admin.promoSaveFailed"));
     } finally {
       setSavingPromo(false);
     }
@@ -150,7 +152,7 @@ export default function AdminDashboardPage() {
 
   async function sendBroadcast() {
     if (!data) return;
-    const confirmed = window.confirm(`Send this email to all ${data.stats.totalUsers} registered users? This cannot be undone.`);
+    const confirmed = window.confirm(t("admin.broadcastConfirm", { count: data.stats.totalUsers }));
     if (!confirmed) return;
 
     setSendingBroadcast(true);
@@ -158,7 +160,7 @@ export default function AdminDashboardPage() {
     try {
       const { data: authData } = await supabase.auth.getSession();
       const token = authData.session?.access_token;
-      if (!token) throw new Error("Not logged in");
+      if (!token) throw new Error(t("admin.notLoggedIn"));
 
       const res = await fetch("/api/admin/broadcast", {
         method: "POST",
@@ -166,12 +168,12 @@ export default function AdminDashboardPage() {
         body: JSON.stringify({ subject: broadcastSubject, html: broadcastBody.replace(/\n/g, "<br>") }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to send broadcast");
-      setBroadcastResult(`Successfully sent to ${json.sentCount} user(s).`);
+      if (!res.ok) throw new Error(json.error || t("admin.broadcastFailed"));
+      setBroadcastResult(t("admin.broadcastSent", { count: json.sentCount }));
       setBroadcastSubject("");
       setBroadcastBody("");
     } catch (err: unknown) {
-      setBroadcastResult(err instanceof Error ? err.message : "Failed to send broadcast");
+      setBroadcastResult(err instanceof Error ? err.message : t("admin.broadcastFailed"));
     } finally {
       setSendingBroadcast(false);
     }
@@ -198,7 +200,7 @@ export default function AdminDashboardPage() {
           <svg className="w-10 h-10 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <h2 className="text-lg font-bold">Access Denied</h2>
+          <h2 className="text-lg font-bold">{t("admin.accessDenied")}</h2>
           <p className="mt-1 text-sm">{error}</p>
         </div>
       </div>
@@ -219,18 +221,18 @@ export default function AdminDashboardPage() {
   return (
     <main className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Super Admin</h1>
-        <p className="text-sm text-muted mt-1">Platform overview and user management.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("admin.title")}</h1>
+        <p className="text-sm text-muted mt-1">{t("admin.subtitle")}</p>
       </div>
 
       {/* STATS CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Total Users", value: data.stats.totalUsers },
-          { label: "Workspaces", value: data.stats.totalWorkspaces },
-          { label: "Captures", value: data.stats.totalCaptures },
-          { label: "Total Views", value: data.stats.totalViews },
-          { label: "Comments", value: data.stats.totalComments },
+          { label: t("admin.totalUsers"), value: data.stats.totalUsers },
+          { label: t("admin.workspaces"), value: data.stats.totalWorkspaces },
+          { label: t("admin.captures"), value: data.stats.totalCaptures },
+          { label: t("admin.totalViews"), value: data.stats.totalViews },
+          { label: t("admin.comments"), value: data.stats.totalComments },
         ].map((s) => (
           <div key={s.label} className="bg-white border border-border rounded-xl p-4 shadow-sm flex flex-col justify-center">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">{s.label}</p>
@@ -243,14 +245,14 @@ export default function AdminDashboardPage() {
         {/* PROMO BANNER */}
         <div className="bg-white border border-border rounded-xl p-5 shadow-sm space-y-4">
           <div>
-            <h2 className="text-sm font-bold text-foreground">Global Promo Banner</h2>
-            <p className="text-[11px] text-muted mt-0.5">Show an announcement to all users.</p>
+            <h2 className="text-sm font-bold text-foreground">{t("admin.promoTitle")}</h2>
+            <p className="text-[11px] text-muted mt-0.5">{t("admin.promoHint")}</p>
           </div>
           <div>
             <textarea
               value={promoMessage}
               onChange={(e) => setPromoMessage(e.target.value)}
-              placeholder="e.g. 🚀 50% Off PRO Plan this week! Code: MAZWAY50"
+              placeholder={t("admin.promoPlaceholder")}
               className="w-full text-xs rounded-lg border border-border p-3 outline-none focus:border-indigo-500 resize-none h-20"
             />
           </div>
@@ -262,14 +264,14 @@ export default function AdminDashboardPage() {
                 onChange={(e) => setPromoEnabled(e.target.checked)}
                 className="w-4 h-4 rounded border-border text-indigo-600 focus:ring-indigo-500"
               />
-              Enable Banner
+              {t("admin.enableBanner")}
             </label>
             <button
               onClick={savePromo}
               disabled={savingPromo}
               className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
-              {savingPromo ? "Saving..." : promoSaved ? "Saved!" : "Save"}
+              {savingPromo ? t("v.saving") : promoSaved ? t("admin.saved") : t("admin.save")}
             </button>
           </div>
         </div>
@@ -277,19 +279,19 @@ export default function AdminDashboardPage() {
         {/* EMAIL BROADCAST */}
         <div className="bg-white border border-border rounded-xl p-5 shadow-sm space-y-4">
           <div>
-            <h2 className="text-sm font-bold text-foreground">Email Broadcast</h2>
-            <p className="text-[11px] text-muted mt-0.5">Send a message to {data.stats.totalUsers} registered users.</p>
+            <h2 className="text-sm font-bold text-foreground">{t("admin.broadcastTitle")}</h2>
+            <p className="text-[11px] text-muted mt-0.5">{t("admin.broadcastHint", { count: data.stats.totalUsers })}</p>
           </div>
           <div className="space-y-2">
             <input
               type="text"
-              placeholder="Subject"
+              placeholder={t("admin.subjectPlaceholder")}
               value={broadcastSubject}
               onChange={(e) => setBroadcastSubject(e.target.value)}
               className="w-full text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500"
             />
             <textarea
-              placeholder="Email body (HTML supported)..."
+              placeholder={t("admin.bodyPlaceholder")}
               value={broadcastBody}
               onChange={(e) => setBroadcastBody(e.target.value)}
               className="w-full text-xs rounded-lg border border-border p-3 outline-none focus:border-indigo-500 resize-none h-20"
@@ -304,7 +306,7 @@ export default function AdminDashboardPage() {
               disabled={sendingBroadcast || !broadcastSubject || !broadcastBody}
               className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
-              {sendingBroadcast ? "Sending..." : "Send Email"}
+              {sendingBroadcast ? t("admin.sending") : t("admin.sendEmail")}
             </button>
           </div>
         </div>
@@ -312,8 +314,8 @@ export default function AdminDashboardPage() {
         {/* TOP WORKSPACES */}
         <div className="bg-white border border-border rounded-xl p-0 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border bg-subtle/30">
-            <h2 className="text-sm font-bold text-foreground">Top Workspaces</h2>
-            <p className="text-[11px] text-muted mt-0.5">By total capture count.</p>
+            <h2 className="text-sm font-bold text-foreground">{t("admin.topWorkspaces")}</h2>
+            <p className="text-[11px] text-muted mt-0.5">{t("admin.byCaptures")}</p>
           </div>
           <ul className="divide-y divide-border/50 flex-1 overflow-y-auto">
             {data.topWorkspaces.map((w) => (
@@ -324,12 +326,12 @@ export default function AdminDashboardPage() {
                 </div>
                 <div className="flex items-center gap-1.5 ml-2 shrink-0">
                   <span className="text-xs font-bold text-indigo-600">{w.capture_count}</span>
-                  <span className="text-[10px] text-muted">captures</span>
+                  <span className="text-[10px] text-muted">{t("admin.capLabel")}</span>
                 </div>
               </li>
             ))}
             {data.topWorkspaces.length === 0 && (
-              <li className="px-4 py-6 text-center text-xs text-muted">No workspaces yet.</li>
+              <li className="px-4 py-6 text-center text-xs text-muted">{t("admin.noWorkspaces")}</li>
             )}
           </ul>
         </div>
@@ -344,14 +346,14 @@ export default function AdminDashboardPage() {
       {/* USERS TABLE */}
       <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between bg-subtle/30">
-          <h2 className="text-sm font-semibold text-foreground">Registered Users</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t("admin.registeredUsers")}</h2>
           <div className="relative">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
-              placeholder="Search by email..."
+              placeholder={t("admin.searchByEmail")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 pr-3 py-1.5 text-xs rounded-lg border border-border outline-none focus:border-indigo-500 w-64"
@@ -363,20 +365,20 @@ export default function AdminDashboardPage() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-subtle/50 text-[11px] uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-4 py-3 font-semibold">User</th>
-                <th className="px-4 py-3 font-semibold">Plan</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Joined</th>
-                <th className="px-4 py-3 font-semibold text-right">Workspaces</th>
-                <th className="px-4 py-3 font-semibold text-right">Captures</th>
-                <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                <th className="px-4 py-3 font-semibold">{t("admin.user")}</th>
+                <th className="px-4 py-3 font-semibold">{t("admin.plan")}</th>
+                <th className="px-4 py-3 font-semibold">{t("admin.status")}</th>
+                <th className="px-4 py-3 font-semibold">{t("admin.joined")}</th>
+                <th className="px-4 py-3 font-semibold text-right">{t("admin.wsCount")}</th>
+                <th className="px-4 py-3 font-semibold text-right">{t("admin.capCount")}</th>
+                <th className="px-4 py-3 font-semibold text-right">{t("admin.actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-muted text-sm">
-                    No users found matching &quot;{search}&quot;.
+                    {t("admin.noUsers", { query: search })}
                   </td>
                 </tr>
               ) : (
@@ -397,7 +399,7 @@ export default function AdminDashboardPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
                         user.suspended ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       }`}>
-                        {user.suspended ? 'Suspended' : 'Active'}
+                        {user.suspended ? t("admin.suspended") : t("admin.active")}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs">
@@ -415,7 +417,7 @@ export default function AdminDashboardPage() {
                             : 'text-red-600 border-red-200 bg-white hover:bg-red-50'
                         }`}
                       >
-                        {actingUserId === user.id ? 'Updating...' : (user.suspended ? 'Activate' : 'Suspend')}
+                        {actingUserId === user.id ? t("admin.updating") : (user.suspended ? t("admin.activate") : t("admin.suspend"))}
                       </button>
                     </td>
                   </tr>

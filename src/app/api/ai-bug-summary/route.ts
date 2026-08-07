@@ -12,6 +12,17 @@ interface DevLog {
   time?: string;
 }
 
+// Compact health summary persisted by the extension (v1). Shares the dev_logs
+// column with the legacy raw arrays — the AI path accepts both.
+interface DevLogSummary {
+  version: number;
+  errors: number;
+  warnings: number;
+  failedRequests: number;
+  topErrors?: string[];
+  failedUrls?: string[];
+}
+
 export const runtime = "nodejs"; // fetch to OpenAI works in edge too, but nodejs is safest
 
 export async function POST(req: Request) {
@@ -27,19 +38,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     const { title, devLogs, windowSize } = body as Record<string, unknown>;
+    const isSummaryShape =
+      !!devLogs && typeof devLogs === "object" && !Array.isArray(devLogs) &&
+      typeof (devLogs as DevLogSummary).version === "number";
     if ((title !== undefined && typeof title !== "string") ||
         (windowSize !== undefined && typeof windowSize !== "string") ||
-        !Array.isArray(devLogs) || devLogs.length > 100 ||
+        (!Array.isArray(devLogs) && !isSummaryShape) ||
+        (devLogs !== undefined && typeof devLogs !== "object") ||
         (typeof title === "string" && title.length > 200) ||
         (typeof windowSize === "string" && windowSize.length > 100) ||
-        JSON.stringify(devLogs).length > 100_000) {
+        JSON.stringify(devLogs ?? {}).length > 100_000) {
       return NextResponse.json({ error: "Invalid or oversized input" }, { status: 400 });
     }
 
-    const logs: DevLog[] = devLogs.filter((log): log is DevLog => Boolean(log) && typeof log === "object");
-    const consoleErrors = logs.filter((l) => l.type === "console");
-    const networkErrors = logs.filter((l) => l.type === "network");
-    const steps = logs.filter((l) => l.type === "step");
+    // Normalize the summary into the same view the AI used to get — with the
+    // top messages/urls made explicit (raw rows are no longer persisted).
+    // Normalize either shape (legacy raw array or the new compact summary)
+    // into the error views the AI already understands.
+    let consoleErrors: DevLog[] = [];
+    let networkErrors: DevLog[] = [];
+    let steps: DevLog[] = [];
+    if (Array.isArray(devLogs)) {
+      const logs: DevLog[] = devLogs.filter((l): l is DevLog => Boolean(l) && typeof l === "object");
+      consoleErrors = logs.filter((l) => l.type === "console");
+      networkErrors = logs.filter((l) => l.type === "network");
+      steps = logs.filter((l) => l.type === "step");
+    } else {
+      const s = devLogs as DevLogSummary | null;
+      consoleErrors = (s?.topErrors ?? []).map((message) => ({ type: "console", level: "error", message }));
+      networkErrors = (s?.failedUrls ?? []).map((url) => ({ type: "network", level: "error", url, method: "GET" }));
+      if ((s?.errors ?? 0) > consoleErrors.length) {
+        consoleErrors.push({ type: "console", level: "error", message: `(${s!.errors} total console errors, top ${consoleErrors.length} shown)` });
+      }
+      if ((s?.failedRequests ?? 0) > networkErrors.length) {
+        networkErrors.push({ type: "network", level: "error", url: `(${s!.failedRequests} total failed requests, top ${networkErrors.length} shown)`, method: "GET" });
+      }
+    }
 
     // ---- AI-powered summary via Multi-Model Waterfall Fallback ----
     const promptPayload = {

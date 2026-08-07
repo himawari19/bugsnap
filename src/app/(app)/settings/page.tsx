@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 export default function SettingsPage() {
+  const { t } = useT();
   const router = useRouter();
   const [webhookUrl, setWebhookUrl] = useState("");
   const [brandName, setBrandName] = useState("mazway");
@@ -34,10 +36,10 @@ export default function SettingsPage() {
 
     const driveResult = url.searchParams.get("drive");
     if (driveResult === "connected") {
-      setDriveSuccess("Google Drive connected successfully.");
+      setDriveSuccess(t("settings.driveConnectedOk"));
       setDriveError(null);
     } else if (driveResult === "error") {
-      setDriveError("Google Drive could not be connected. Please try again.");
+      setDriveError(t("settings.driveError"));
       setDriveSuccess(null);
     }
 
@@ -45,7 +47,7 @@ export default function SettingsPage() {
       url.searchParams.delete("drive");
       router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
     }
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     // Load workspace settings
@@ -83,16 +85,17 @@ export default function SettingsPage() {
     });
   }, [activeWsId]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- driveRequest is stable per t
   async function driveRequest(path: string, init?: RequestInit) {
     const { data, error: sessionError } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    if (sessionError || !token) throw new Error("Your session expired. Please sign in again.");
+    if (sessionError || !token) throw new Error(t("settings.sessionExpired"));
     const response = await fetch(path, {
       ...init,
       headers: { ...init?.headers, Authorization: `Bearer ${token}` },
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Google Drive request failed.");
+    if (!response.ok) throw new Error(result.error || t("settings.driveError"));
     return result;
   }
 
@@ -104,7 +107,7 @@ export default function SettingsPage() {
         setDriveConnected(Boolean(result.connected));
         setDriveEmail(result.email || null);
       })
-      .catch((err) => { if (!cancelled) setDriveError(err instanceof Error ? err.message : "Could not load Drive status."); })
+      .catch((err) => { if (!cancelled) setDriveError(err instanceof Error ? err.message : t("settings.driveStatusError")); })
       .finally(() => { if (!cancelled) setDriveLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -115,10 +118,10 @@ export default function SettingsPage() {
     setDriveError(null);
     try {
       const result = await driveRequest("/api/google-drive/connect", { method: "POST" });
-      if (!result.url) throw new Error("Google authorization URL was not returned.");
+      if (!result.url) throw new Error(t("settings.noAuthUrl"));
       window.location.assign(result.url);
     } catch (err) {
-      setDriveError(err instanceof Error ? err.message : "Could not connect Google Drive.");
+      setDriveError(err instanceof Error ? err.message : t("settings.connectError"));
       setDriveActionLoading(false);
     }
   }
@@ -132,7 +135,7 @@ export default function SettingsPage() {
       setDriveConnected(false);
       setDriveEmail(null);
     } catch (err) {
-      setDriveError(err instanceof Error ? err.message : "Could not disconnect Google Drive.");
+      setDriveError(err instanceof Error ? err.message : t("settings.disconnectError"));
     } finally {
       setDriveActionLoading(false);
     }
@@ -146,7 +149,7 @@ export default function SettingsPage() {
 
     try {
       if (!activeWsId) {
-        throw new Error("No active workspace selected. Please pick a workspace and try again.");
+        throw new Error(t("settings.noWs"));
       }
       const { error } = await supabase.from("workspace_settings").upsert({
         workspace_id: activeWsId,
@@ -160,7 +163,7 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save settings";
+      const msg = err instanceof Error ? err.message : t("settings.failedSave");
       setError(msg);
     } finally {
       setSaving(false);
@@ -170,21 +173,21 @@ export default function SettingsPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
-        <p className="text-sm text-muted mt-1">Configure integrations, custom branding, and team notifications.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("settings.title")}</h1>
+        <p className="text-sm text-muted mt-1">{t("settings.subtitle")}</p>
       </div>
 
       <div className="rounded-xl border border-border bg-white p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-foreground">Team Members</h2>
-            <p className="text-xs text-muted">Manage who has access to your workspace captures.</p>
+            <h2 className="text-base font-semibold text-foreground">{t("settings.teamMembers")}</h2>
+            <p className="text-xs text-muted">{t("settings.teamMembersHint")}</p>
           </div>
           <Link
             href="/settings/members"
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
           >
-            Manage Members →
+            {t("settings.manageMembers")}
           </Link>
         </div>
       </div>
@@ -193,15 +196,15 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">Google Drive</h2>
-              {!driveLoading && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${driveConnected ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-muted bg-subtle border-border"}`}>{driveConnected ? "Connected" : "Not connected"}</span>}
+              <h2 className="text-base font-semibold text-foreground">{t("settings.googleDrive")}</h2>
+              {!driveLoading && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${driveConnected ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-muted bg-subtle border-border"}`}>{driveConnected ? t("settings.connected") : t("settings.notConnected")}</span>}
             </div>
-            <p className="text-xs text-muted mt-1">{driveLoading ? "Checking connection..." : driveConnected ? `Captures use ${driveEmail || "your connected Google account"}.` : "Connect your account to manage capture files in Drive."}</p>
+            <p className="text-xs text-muted mt-1">{driveLoading ? t("settings.checkingDrive") : driveConnected ? t("settings.driveUses", { email: driveEmail || "your connected Google account" }) : t("settings.driveConnectHint")}</p>
           </div>
           {driveConnected ? (
-            <button type="button" onClick={disconnectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50 transition-colors">{driveActionLoading ? "Disconnecting..." : "Disconnect"}</button>
+            <button type="button" onClick={disconnectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50 transition-colors">{driveActionLoading ? t("settings.disconnecting") : t("settings.disconnect")}</button>
           ) : (
-            <button type="button" onClick={() => setConnectDriveModalOpen(true)} disabled={driveLoading || driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">Connect Drive</button>
+            <button type="button" onClick={() => setConnectDriveModalOpen(true)} disabled={driveLoading || driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">{t("settings.connectDrive")}</button>
           )}
         </div>
         {driveSuccess && <p role="status" className="text-xs text-emerald-600 mt-3">{driveSuccess}</p>}
@@ -213,23 +216,23 @@ export default function SettingsPage() {
         <div className="rounded-xl border border-border bg-white p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Webhooks & Notifications</h2>
-              <p className="text-xs text-muted">Receive Slack, Discord, or custom webhook alerts when a new capture is saved.</p>
+              <h2 className="text-base font-semibold text-foreground">{t("settings.webhooksTitle")}</h2>
+              <p className="text-xs text-muted">{t("settings.webhookHint")}</p>
             </div>
             {webhookUrl.trim() ? (
               <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                Active
+                {t("settings.active")}
               </span>
             ) : (
               <span className="text-xs font-semibold text-muted bg-subtle px-2 py-0.5 rounded-full border border-border">
-                Not Configured
+                {t("settings.notConfigured")}
               </span>
             )}
           </div>
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-              Webhook URL (Slack / Discord / Zapier)
+              {t("settings.webhookLabel")}
             </label>
             <input
               type="url"
@@ -239,7 +242,7 @@ export default function SettingsPage() {
               className="w-full text-sm rounded-lg border border-border px-3.5 py-2.5 outline-none focus:border-indigo-500 bg-white font-mono"
             />
             <p className="text-[11px] text-muted mt-1.5">
-              We&apos;ll POST a JSON payload with video thumbnail and share URL every time a new bug/recording is created.
+              {t("settings.webhookPost")}
             </p>
           </div>
         </div>
@@ -248,42 +251,42 @@ export default function SettingsPage() {
         <div className="rounded-xl border border-border bg-white p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
-              <h2 className="text-base font-semibold text-foreground">White-label & Custom Branding</h2>
-              <p className="text-xs text-muted">Customize how shared capture links appear to clients or guests.</p>
+              <h2 className="text-base font-semibold text-foreground">{t("settings.brandingTitle")}</h2>
+              <p className="text-xs text-muted">{t("settings.brandingHint")}</p>
             </div>
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
               userPlan === "free"
                 ? "text-indigo-600 bg-indigo-50 border-indigo-100"
                 : "text-amber-600 bg-amber-50 border-amber-100"
             }`}>
-              {userPlan === "free" ? "Pro Only" : "Active"}
+              {userPlan === "free" ? t("settings.proOnly") : t("settings.active")}
             </span>
           </div>
 
           <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${userPlan === "free" ? "opacity-50" : ""}`}>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-                Brand Name
+                {t("settings.brandName")}
               </label>
               <input
                 type="text"
                 value={brandName}
                 disabled={userPlan === "free"}
                 onChange={(e) => setBrandName(e.target.value)}
-                placeholder={userPlan === "free" ? "Upgrade to Pro to customize" : "Acme Corp"}
+                placeholder={userPlan === "free" ? t("settings.brandPlaceholderFree") : t("settings.brandPlaceholder")}
                 className="w-full text-sm rounded-lg border border-border px-3.5 py-2.5 outline-none focus:border-indigo-500 bg-white disabled:bg-subtle disabled:cursor-not-allowed"
               />
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-                Custom Logo URL (PNG/SVG)
+                {t("settings.logoLabel")}
               </label>
               <input
                 type="url"
                 value={logoUrl}
                 disabled={userPlan === "free"}
                 onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder={userPlan === "free" ? "Upgrade to Pro to upload logo" : "https://acme.com/logo.png"}
+                placeholder={userPlan === "free" ? t("settings.logoPlaceholderFree") : t("settings.logoPlaceholder")}
                 className="w-full text-sm rounded-lg border border-border px-3.5 py-2.5 outline-none focus:border-indigo-500 bg-white disabled:bg-subtle disabled:cursor-not-allowed"
               />
             </div>
@@ -298,25 +301,25 @@ export default function SettingsPage() {
               className="w-4 h-4 rounded border-border text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
             />
             <span className="text-xs font-medium text-foreground">
-              Hide &quot;Powered by Mazway&quot; watermark on public share pages
+              {t("settings.hideWatermark")}
             </span>
           </label>
 
           {/* Custom Domain (white-label) */}
           <div className={`pt-3 border-t border-border/60 ${userPlan === "free" ? "opacity-50" : ""}`}>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-              Custom Domain {userPlan === "free" && <span className="text-indigo-600">(Pro)</span>}
+              {t(userPlan === "free" ? "settings.customDomainPro" : "settings.customDomain")} {userPlan === "free" && <span className="text-indigo-600">({t("settings.proOnly")})</span>}
             </label>
             <input
               type="text"
               value={customDomain}
               disabled={userPlan === "free"}
               onChange={(e) => setCustomDomain(e.target.value)}
-              placeholder={userPlan === "free" ? "Upgrade to Pro to point CNAME" : "captures.yourcompany.com"}
+              placeholder={userPlan === "free" ? t("settings.domainPlaceholderFree") : t("settings.domainPlaceholder")}
               className="w-full text-sm rounded-lg border border-border px-3.5 py-2.5 outline-none focus:border-indigo-500 bg-white font-mono disabled:bg-subtle disabled:cursor-not-allowed"
             />
             <p className="text-[11px] text-muted mt-1.5">
-              Point your domain&apos;s CNAME to the dashboard host to serve share pages from your own brand.
+              {t("settings.domainHint")}
             </p>
           </div>
         </div>
@@ -329,22 +332,22 @@ export default function SettingsPage() {
             disabled={saving}
             className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors shadow-sm"
           >
-            {saving ? "Saving..." : "Save Settings"}
+            {saving ? t("settings.saving") : t("settings.save")}
           </button>
-          {saved && <span className="text-xs font-medium text-emerald-600">✓ Settings saved successfully!</span>}
+          {saved && <span className="text-xs font-medium text-emerald-600">{t("settings.saved")}</span>}
         </div>
       </form>
 
       {connectDriveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="connect-drive-title">
-          <button className="absolute inset-0 bg-black/40" aria-label="Close" onClick={() => !driveActionLoading && setConnectDriveModalOpen(false)} />
+          <button className="absolute inset-0 bg-black/40" aria-label={t("common.close")} onClick={() => !driveActionLoading && setConnectDriveModalOpen(false)} />
           <div className="relative w-full max-w-sm rounded-xl border border-border bg-white p-6 shadow-xl">
-            <h2 id="connect-drive-title" className="text-lg font-bold text-foreground">Connect Google Drive?</h2>
-            <p className="text-sm text-muted mt-2">You&apos;ll continue to Google to authorize Mazway to manage capture files in your Drive.</p>
+            <h2 id="connect-drive-title" className="text-lg font-bold text-foreground">{t("settings.connectDriveQ")}</h2>
+            <p className="text-sm text-muted mt-2">{t("settings.connectDriveDesc")}</p>
             {driveError && <p role="alert" className="text-xs text-red-600 mt-3">{driveError}</p>}
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
-              <button type="button" onClick={() => setConnectDriveModalOpen(false)} disabled={driveActionLoading} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50">Cancel</button>
-              <button type="button" onClick={connectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{driveActionLoading ? "Connecting..." : "Continue to Google"}</button>
+              <button type="button" onClick={() => setConnectDriveModalOpen(false)} disabled={driveActionLoading} className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg disabled:opacity-50">{t("common.cancel")}</button>
+              <button type="button" onClick={connectDrive} disabled={driveActionLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{driveActionLoading ? t("settings.connecting") : t("settings.continueToGoogle")}</button>
             </div>
           </div>
         </div>

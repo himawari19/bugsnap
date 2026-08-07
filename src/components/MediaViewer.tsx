@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT } from "@/components/I18nProvider";
 
 interface MediaViewerProps {
   type: string;
@@ -24,6 +25,7 @@ const STEP_ZOOM = 0.5;
 const DOUBLE_CLICK_ZOOM = 2.5;
 
 export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps) {
+  const { t } = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const lightboxTriggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -150,7 +152,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
         className="relative flex h-[clamp(16rem,40vh,28rem)] min-h-[16rem] sm:h-[clamp(28rem,72vh,60rem)] sm:min-h-[28rem] w-full items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-[#f4f4f6] p-4 shadow-inner sm:p-6"
       >
         {unavailable ? (
-          <div className="px-6 text-center text-sm text-white/70" role="status">Preview unavailable</div>
+          <div className="px-6 text-center text-sm text-white/70" role="status">{t("mv.unavailable")}</div>
         ) : type === "video" ? (
           videoFailed && previewUrl ? (
             <iframe
@@ -169,7 +171,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
               className="h-full w-full object-contain"
               aria-label={title}
             >
-              Your browser does not support video playback.
+              {t("mv.noVideoSupport")}
             </video>
           )
         ) : imageUrl && !imageFailed ? (
@@ -178,13 +180,13 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
             type="button"
             onClick={() => setLightboxOpen(true)}
             className="flex h-full w-full cursor-zoom-in items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-white"
-            aria-label={`Open ${title} in image viewer`}
+            aria-label={t("mv.openViewer", { name: title })}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt={title} referrerPolicy="no-referrer" onError={() => setImageFailed(true)} className="h-full w-full object-contain" />
           </button>
         ) : (
-          <div className="px-6 text-center text-sm text-white/70" role="status">Preview unavailable</div>
+          <div className="px-6 text-center text-sm text-white/70" role="status">{t("mv.unavailable")}</div>
         )}
       </div>
 
@@ -206,7 +208,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
                 type="button"
                 onClick={resetView}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-black/75 text-white hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                aria-label="Reset zoom"
+                aria-label={t("mv.resetZoom")}
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v6h6M20 20v-6h-6M4 10a8 8 0 0114-4.9M20 14a8 8 0 01-14 4.9" /></svg>
               </button>
@@ -218,8 +220,8 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-black/75 text-white hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                aria-label="Download image"
-                title="Download"
+                aria-label={t("mv.download")}
+                title={t("mv.download")}
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
               </a>
@@ -228,7 +230,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
               type="button"
               onClick={toggleFullscreen}
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-black/75 text-white hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+              aria-label={isFullscreen ? t("mv.exitFullscreen") : t("mv.openFullscreen")}
             >
               {isFullscreen ? (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3" /></svg>
@@ -241,7 +243,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
               type="button"
               onClick={closeLightbox}
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-black/75 text-white hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              aria-label="Close image viewer"
+              aria-label={t("mv.closeViewer")}
             >
               <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
@@ -250,7 +252,7 @@ export default function MediaViewer({ type, driveUrl, title }: MediaViewerProps)
           {/* Zoom indicator */}
           {zoom > MIN_ZOOM && (
             <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-              {Math.round(zoom * 100)}% · drag to pan
+              {t("mv.dragToPan", { zoom: Math.round(zoom * 100) })}
             </div>
           )}
 

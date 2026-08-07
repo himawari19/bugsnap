@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 export interface CommentRow {
   id: string;
@@ -82,6 +83,7 @@ export default function Comments({
   getCurrentTime,
   onSeek,
 }: CommentsProps) {
+  const { t } = useT();
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [body, setBody] = useState("");
@@ -100,7 +102,7 @@ export default function Comments({
   // Resolve the effective author name from the prop, then localStorage.
   // Default to "Guest" so anonymous viewers can comment instantly without a name prompt.
   const effAuthorName =
-    (authorName && authorName.trim()) || storedAuthorName || "Guest";
+    (authorName && authorName.trim()) || storedAuthorName || t("cm.guest");
 
   useEffect(() => {
     // Recheck the persisted name if the prop is cleared (e.g. mounting as a
@@ -128,7 +130,7 @@ export default function Comments({
         if (cancelled) return;
         setLoading(false);
         if (error) {
-          setError("Couldn't load comments.");
+          setError(t("cm.errorLoad"));
           return;
         }
         setComments((data as CommentRow[]) ?? []);
@@ -160,26 +162,26 @@ export default function Comments({
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [captureId]);
+  }, [captureId, t]);
 
   async function handleSubmit() {
     const text = body.trim();
     if (!text || submitting) return;
     if (needsName) {
-      setError("Enter your name to comment.");
+      setError(t("cm.errorPost"));
       return;
     }
 
     let video_timestamp: number | null = null;
     if (isVideo && timestampOn) {
-      const t = getCurrentTime?.();
-      if (typeof t === "number" && isFinite(t) && t >= 0) {
-        video_timestamp = Math.floor(t);
+      const currentTime = getCurrentTime?.();
+      if (typeof currentTime === "number" && isFinite(currentTime) && currentTime >= 0) {
+        video_timestamp = Math.floor(currentTime);
       } else {
         // Fallback when the player can't be read (Drive iframe): manual m:ss.
         video_timestamp = parseTimestamp(manualTime);
         if (video_timestamp === null) {
-          setError("Enter a video time like 1:23 (m:ss), or turn the timestamp off.");
+          setError(t("cm.errorTime"));
           return;
         }
       }
@@ -243,7 +245,7 @@ export default function Comments({
       setComments((prev) => prev.filter((c) => c.id !== optimisticId));
       setError(
         (err as { message?: string })?.message ||
-          "Couldn't post the comment. Please try again."
+          t("cm.errorPost")
       );
     } finally {
       setSubmitting(false);
@@ -290,7 +292,7 @@ export default function Comments({
       setReplyBody("");
       setReplyingTo(null);
     } catch {
-      setError("Couldn't post the reply. Please try again.");
+      setError(t("cm.errorReply"));
     } finally {
       setReplying(false);
     }
@@ -315,8 +317,8 @@ export default function Comments({
               className="text-xs text-muted cursor-pointer select-none"
             >
               {getCurrentTime
-                ? "Comment at current video time"
-                : "Comment at video time"}
+                ? t("cm.atCurrentTime")
+                : t("cm.atVideoTime")}
             </label>
             {timestampOn && !getCurrentTime && (
               <input
@@ -328,8 +330,8 @@ export default function Comments({
                     handleSubmit();
                   }
                 }}
-                placeholder="1:23"
-                aria-label="Video time (m:ss)"
+                placeholder={t("cm.timePlaceholder")}
+                aria-label={t("cm.atVideoTime")}
                 className="w-16 rounded-lg border border-border bg-subtle/50 px-2 py-1 text-xs font-mono text-foreground outline-none focus:border-indigo-500"
               />
             )}
@@ -344,7 +346,7 @@ export default function Comments({
               handleSubmit();
             }
           }}
-          placeholder="Write a comment…"
+          placeholder={t("cm.writePlaceholder")}
           rows={2}
           className="w-full text-xs rounded-lg border border-border px-3 py-2.5 outline-none focus:border-indigo-500 bg-subtle/50 resize-none placeholder:text-muted/70"
         />
@@ -358,7 +360,7 @@ export default function Comments({
             disabled={submitting || !body.trim()}
             className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ml-auto"
           >
-            {submitting ? "Posting…" : "Post"}
+            {submitting ? t("cm.posting") : t("cm.post")}
           </button>
         </div>
       </>
@@ -368,15 +370,15 @@ export default function Comments({
           beyond the DevTools panel height */}
       <div className="max-h-[320px] overflow-y-auto pr-1 -mr-1">
         {loading ? (
-          <p className="text-xs text-muted py-2">Loading comments…</p>
+          <p className="text-xs text-muted py-2">{t("cm.loading")}</p>
         ) : comments.length === 0 ? (
-          <p className="text-xs text-muted py-2">No comments yet.</p>
+          <p className="text-xs text-muted py-2">{t("cm.none")}</p>
         ) : (
         <ul className="space-y-3">
           {comments
             .filter((c) => !c.parent_id) // top-level threads only
             .map((c) => {
-              const name = c.author_name || "Guest";
+              const name = c.author_name || t("cm.guest");
               const seed = c.author_email || c.author_name || c.id;
               const ts = c.video_timestamp;
               const replies = comments.filter((r) => r.parent_id === c.id);
@@ -397,7 +399,7 @@ export default function Comments({
                             <button
                               type="button"
                               onClick={() => onSeek(ts)}
-                              title={`Jump to ${formatTimestamp(ts)}`}
+                              title={t("cm.jumpTo", { time: formatTimestamp(ts) })}
                               className="text-[10px] font-mono font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md px-1.5 py-0.5 hover:bg-indigo-100 transition-colors"
                             >
                               @ {formatTimestamp(ts)}
@@ -412,7 +414,7 @@ export default function Comments({
                           onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
                           className="text-[10px] font-medium text-muted hover:text-indigo-600 transition-colors"
                         >
-                          Reply
+                          {t("cm.reply")}
                         </button>
                       </div>
                       <p className={`text-xs mt-0.5 whitespace-pre-wrap break-words ${
@@ -432,7 +434,7 @@ export default function Comments({
                                 handleReply(c.id);
                               }
                             }}
-                            placeholder={`Reply to ${name}…`}
+                            placeholder={t("cm.replyTo", { name })}
                             className="flex-1 text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 bg-subtle/50"
                             autoFocus
                           />
@@ -442,7 +444,7 @@ export default function Comments({
                             disabled={replying || !replyBody.trim()}
                             className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors shrink-0"
                           >
-                            {replying ? "Posting…" : "Reply"}
+                            {replying ? t("cm.posting") : t("cm.reply")}
                           </button>
                         </div>
                       )}
@@ -453,7 +455,7 @@ export default function Comments({
                   {replies.length > 0 && (
                     <div className="ml-10 space-y-2 border-l-2 border-border/60 pl-3">
                       {replies.map((r) => {
-                        const rName = r.author_name || "Guest";
+                        const rName = r.author_name || t("cm.guest");
                         const rSeed = r.author_email || r.author_name || r.id;
                         return (
                           <div key={r.id} className="flex gap-3">
@@ -471,7 +473,7 @@ export default function Comments({
                                   onClick={() => setReplyingTo(replyingTo === r.id ? null : r.id)}
                                   className="text-[10px] font-medium text-muted hover:text-indigo-600 transition-colors"
                                 >
-                                  Reply
+                                  {t("cm.reply")}
                                 </button>
                               </div>
                               <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap break-words">
@@ -490,7 +492,7 @@ export default function Comments({
                                         handleReply(r.id);
                                       }
                                     }}
-                                    placeholder={`Reply to ${rName}…`}
+                                    placeholder={t("cm.replyTo", { name: rName })}
                                     className="flex-1 text-xs rounded-lg border border-border px-3 py-2 outline-none focus:border-indigo-500 bg-subtle/50"
                                     autoFocus
                                   />
@@ -500,7 +502,7 @@ export default function Comments({
                                     disabled={replying || !replyBody.trim()}
                                     className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors shrink-0"
                                   >
-                                    {replying ? "Posting…" : "Reply"}
+                                    {replying ? t("cm.posting") : t("cm.reply")}
                                   </button>
                                 </div>
                               )}

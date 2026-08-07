@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 interface Capture {
   id: string;
@@ -39,15 +40,15 @@ function getOwnerInitial(email: string | null | undefined): string {
   return (char || "M").toUpperCase();
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (k: string, vars?: Record<string, string | number>) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return t("time.justNow");
+  if (m < 60) return t("time.minAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return t("time.hrAgo", { n: h });
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return t("time.dayAgo", { n: d });
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
@@ -60,10 +61,16 @@ export default function DashboardAnalyticsPage() {
 }
 
 function DashboardContent() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const wsParam = searchParams.get("ws");
   const [captures, setCaptures] = useState<Capture[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [videoCount, setVideoCount] = useState(0);
+  const [screenshotCount, setScreenshotCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [session, setSession] = useState<{ name: string; email: string }>({
     name: "User",
     email: "",
@@ -86,29 +93,75 @@ function DashboardContent() {
 
     (async () => {
       // Explicit column list (skip heavy dev_logs) — keeps the dashboard fast.
-      let query = supabase
-        .from("captures")
+      // All-time stats come from cheap COUNT(*) (head) queries; the full row
+      // set is never pulled. A bounded recent slice feeds the weekly chart /
+      // recent-5 list. ponytail: counts are per-user-visible via RLS and
+      // approximate at free-tier scale; exact totals for the leaderboard
+      // would need a counting RPC — add one if numbers must be exact.
+      const wsId = wsParam && wsParam !== "all" ? wsParam : null;
+
+      // Build the query chains first (supabase builders are thenable — do NOT
+      // .then() a builder to conditionally add filters; that resolves the
+      // response and loses the builder).
+      const countOf = (type?: string) => {
+        let q = supabase.from("captures").select("id", { count: "exact", head: true });
+        if (type) q = q.eq("type", type);
+        if (wsId) q = q.eq("workspace_id", wsId);
+        return q;
+      };
+      let recentQ = supabase.from("captures")
         .select("id, title, type, drive_url, created_at, window_size, workspace_id, owner_email, duration")
-        .order("created_at", { ascending: false });
-      // Filter server-side when a workspace is active. If the workspace_id
-      // column hasn't been added to the DB yet (deploy race), the .eq is a
-      // no-op and we fall back to the client-side filter below.
-      if (wsParam && wsParam !== "all") {
-        query = query.eq("workspace_id", wsParam);
+        .order("created_at", { ascending: false })
+        .range(0, 99);
+      if (wsId) recentQ = recentQ.eq("workspace_id", wsId);
+
+      const [totalRes, videoRes, shotRes, recentRes] = await Promise.all([
+        countOf(),
+        countOf("video"),
+        countOf("screenshot"),
+        recentQ,
+      ]);
+
+      if (!cancelled) {
+        if (totalRes.error) console.warn("Error counting captures:", totalRes.error);
+        else setTotalCount(totalRes.count || 0);
+        if (!videoRes.error) setVideoCount(videoRes.count || 0);
+        if (!shotRes.error) setScreenshotCount(shotRes.count || 0);
+        if (recentRes.error) console.warn("Error fetching recent captures:", recentRes.error);
+        else {
+          const items = recentRes.data || [];
+          setCaptures(items);
+          setHasMore(items.length >= 100);
+        }
+        setLoading(false);
       }
-      const { data, error } = await query;
-      if (error) {
-        console.warn("Error fetching captures:", error);
-      } else if (!cancelled) {
-        setCaptures(data || []);
-      }
-      if (!cancelled) setLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
   }, [wsParam]);
+
+  // Load an additional page of recent captures (pairs with setHasMore).
+  // ponytail: a single "load more" button, not an IntersectionObserver —
+  // the dashboard list is short; full infinite-scroll lives on /captures.
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const wsId = wsParam && wsParam !== "all" ? wsParam : null;
+    let q = supabase.from("captures")
+      .select("id, title, type, drive_url, created_at, window_size, workspace_id, owner_email, duration")
+      .order("created_at", { ascending: false })
+      .range(captures.length, captures.length + 99);
+    if (wsId) q = q.eq("workspace_id", wsId);
+    const { data, error } = await q;
+    setLoadingMore(false);
+    if (error) return console.warn("Error loading more captures:", error);
+    const items = data || [];
+    if (!items.length) { setHasMore(false); return; }
+    setCaptures((prev) => [...prev, ...items]);
+    setHasMore(items.length >= 100);
+  };
 
   // Restrict to the active workspace when a ws param is present. The
   // undefined/null guards tolerate the workspace_id column not existing yet.
@@ -121,11 +174,10 @@ function DashboardContent() {
       c.workspace_id === wsParam
   );
 
-  const videos = wsCaptures.filter((c) => c.type === "video");
-  const screenshots = wsCaptures.filter((c) => c.type === "screenshot");
-
-  // Storage usage estimate: screenshots avg 200KB, videos avg 4.5MB
-  const storageUsageMb = (screenshots.length * 0.2) + (videos.length * 4.5);
+  // Storage usage estimate: screenshots avg 200KB, videos avg 4.5MB.
+  // ponytail: derived from exact COUNT(*) results instead of the bounded
+  // recent slice, so it stays meaningful even when only recent rows are held.
+  const storageUsageMb = (screenshotCount * 0.2) + (videoCount * 4.5);
   const storageUsageText = storageUsageMb > 1024 
     ? `${(storageUsageMb / 1024).toFixed(1)} GB`
     : `${storageUsageMb.toFixed(1)} MB`;
@@ -141,7 +193,10 @@ function DashboardContent() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // This week's captures
+  // This week's captures (from the bounded recent slice — recent rows dominate
+  // a 7-day window; a very old, reused workspace could undercount, acceptable
+  // at free-tier scale). ponytail: exact week count would need a server-side
+  // count query; add one if accuracy matters for the recap block.
   const now = Date.now();
   const weekMs = 7 * 24 * 60 * 60 * 1000;
   const thisWeek = wsCaptures.filter((c) => now - new Date(c.created_at).getTime() < weekMs);
@@ -188,9 +243,9 @@ function DashboardContent() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Welcome back, {session.name.split(" ")[0]} 👋
+            {t("dash.welcome", { name: session.name.split(" ")[0] })} 👋
           </h1>
-          <p className="text-sm text-muted mt-1">Here&apos;s what&apos;s happening with your captures.</p>
+          <p className="text-sm text-muted mt-1">{t("dash.subtitle")}</p>
         </div>
         <Link
           href="/captures"
@@ -199,7 +254,7 @@ function DashboardContent() {
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          View All Captures
+          {t("dash.viewAll")}
         </Link>
       </div>
 
@@ -207,8 +262,8 @@ function DashboardContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {[
           {
-            label: "Total Captures",
-            value: wsCaptures.length,
+            labelKey: "dash.totalCaptures",
+            value: totalCount,
             icon: (
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -217,8 +272,8 @@ function DashboardContent() {
             accent: "bg-indigo-50 text-indigo-600",
           },
           {
-            label: "Recordings",
-            value: videos.length,
+            labelKey: "dash.recordings",
+            value: videoCount,
             icon: (
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
@@ -227,8 +282,8 @@ function DashboardContent() {
             accent: "bg-rose-50 text-rose-500",
           },
           {
-            label: "Screenshots",
-            value: screenshots.length,
+            labelKey: "dash.screenshots",
+            value: screenshotCount,
             icon: (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -237,7 +292,7 @@ function DashboardContent() {
             accent: "bg-emerald-50 text-emerald-600",
           },
           {
-            label: "Storage Estimate",
+            labelKey: "dash.storage",
             value: storageUsageText,
             icon: (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -247,9 +302,9 @@ function DashboardContent() {
             accent: "bg-amber-50 text-amber-600",
           },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-border bg-white p-5">
+          <div key={stat.labelKey} className="rounded-xl border border-border bg-white p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted">{stat.label}</span>
+              <span className="text-xs font-medium text-muted">{t(stat.labelKey)}</span>
               <span className={`w-9 h-9 rounded-lg flex items-center justify-center ${stat.accent}`}>
                 {stat.icon}
               </span>
@@ -263,8 +318,8 @@ function DashboardContent() {
         {/* Activity Chart */}
         <div className="lg:col-span-3 rounded-xl border border-border bg-white p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-base font-semibold text-foreground">Weekly Activity</h2>
-            <span className="text-xs text-muted">Last 7 days</span>
+            <h2 className="text-base font-semibold text-foreground">{t("dash.weekly")}</h2>
+            <span className="text-xs text-muted">{t("dash.last7")}</span>
           </div>
           <div className="flex items-end gap-3 h-40">
             {days.map((d) => (
@@ -273,7 +328,7 @@ function DashboardContent() {
                 <div
                   className="w-full max-w-[42px] rounded-t-lg bg-indigo-100 hover:bg-indigo-500 transition-colors relative group"
                   style={{ height: `${Math.max(4, (d.count / maxDayCount) * 120)}px` }}
-                  title={`${d.count} captures`}
+                  title={t("dash.caps", { count: d.count })}
                 />
                 <span className="text-[11px] text-muted">{d.label}</span>
               </div>
@@ -284,16 +339,16 @@ function DashboardContent() {
         {/* Recent Activity */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-white p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-foreground">Recent Activity</h2>
+            <h2 className="text-base font-semibold text-foreground">{t("dash.recent")}</h2>
             <Link href="/captures" className="text-xs text-indigo-600 font-medium hover:underline">
-              View all
+              {t("dash.viewAllShort")}
             </Link>
           </div>
           {recent.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-xs text-muted">No captures yet.</p>
+              <p className="text-xs text-muted">{t("dash.none")}</p>
               <p className="text-[11px] text-muted mt-1">
-                Use the mazwayScreen extension to create your first capture.
+                {t("dash.tryExt")}
               </p>
             </div>
           ) : (
@@ -320,7 +375,7 @@ function DashboardContent() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{c.title}</p>
                     <p className="text-[11px] text-muted">
-                      {timeAgo(c.created_at)}
+                      {timeAgo(c.created_at, t)}
                     </p>
                   </div>
                   <svg className="w-4 h-4 text-muted shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -330,35 +385,44 @@ function DashboardContent() {
               ))}
             </div>
           )}
+          {hasMore && (
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="mt-3 w-full py-2 rounded-lg border border-border bg-white text-xs font-semibold text-indigo-600 hover:bg-subtle transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? t("common.loading") : t("dash.loadMore")}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Team Analytics — leaderboard by capture count (per workspace) */}
-      {wsCaptures.length > 0 && (
+      {captures.length > 0 && (
         <div className="mt-6 rounded-xl border border-border bg-white p-7">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/60">
-            <h2 className="text-base font-semibold text-foreground">Team Activity</h2>
-            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">All time</span>
+            <h2 className="text-base font-semibold text-foreground">{t("dash.team")}</h2>
+            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{t("dash.allTime")}</span>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Column 1: Capture Types */}
             <div className="pr-4 md:border-r border-border/70 space-y-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                Capture Types
+                {t("dash.types")}
               </p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted flex items-center gap-1.5">🎥 Videos</span>
-                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{videos.length}</span>
+                  <span className="text-muted flex items-center gap-1.5">🎥 {t("dash.videos")}</span>
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{videoCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted flex items-center gap-1.5">📷 Screenshots</span>
-                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{screenshots.length}</span>
+                  <span className="text-muted flex items-center gap-1.5">📷 {t("dash.shots")}</span>
+                  <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{screenshotCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs pt-1.5 border-t border-dashed border-border/60">
-                  <span className="font-medium text-foreground">Total Captures</span>
-                  <span className="font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">{wsCaptures.length}</span>
+                  <span className="font-medium text-foreground">{t("dash.totalCaptures")}</span>
+                  <span className="font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">{totalCount}</span>
                 </div>
               </div>
             </div>
@@ -366,15 +430,15 @@ function DashboardContent() {
             {/* Column 2: Weekly Recap */}
             <div className="pr-4 md:border-r border-border/70 space-y-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                This Week
+                {t("dash.week")}
               </p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">New captures</span>
+                  <span className="text-muted">{t("dash.newThisWeek")}</span>
                   <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">{thisWeek.length}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">Busiest day</span>
+                  <span className="text-muted">{t("dash.busiest")}</span>
                   <span className="font-semibold text-foreground bg-subtle px-2 py-0.5 rounded border border-border">
                     {days.reduce((a, b) => (b.count > a.count ? b : a), days[0]).label}
                   </span>
@@ -385,7 +449,7 @@ function DashboardContent() {
             {/* Column 3: Leaderboard */}
             <div className="space-y-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                Team Leaderboard
+                {t("dash.board")}
               </p>
               <div className="space-y-2.5 max-h-36 overflow-y-auto pr-1">
                 {contributors.map((c) => (
@@ -399,12 +463,12 @@ function DashboardContent() {
                       </span>
                     </div>
                     <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 shrink-0">
-                      {c.count} caps
+                      {t("dash.caps", { count: c.count })}
                     </span>
                   </div>
                 ))}
                 {contributors.length === 0 && (
-                  <p className="text-xs text-muted">No contributors yet.</p>
+                  <p className="text-xs text-muted">{t("dash.noRecent")}</p>
                 )}
               </div>
             </div>

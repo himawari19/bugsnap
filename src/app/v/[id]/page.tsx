@@ -4,9 +4,10 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import DevToolsPanel, { DevLog } from "@/components/DevToolsPanel";
+import DevToolsPanel, { CapturedLogs } from "@/components/DevToolsPanel";
 import Comments from "@/components/Comments";
 import MediaViewer from "@/components/MediaViewer";
+import { useT } from "@/components/I18nProvider";
 
 interface Capture {
   id: string;
@@ -16,7 +17,7 @@ interface Capture {
   created_at: string;
   window_size?: string | null;
   description?: string | null;
-  dev_logs?: DevLog[] | null;
+  dev_logs?: CapturedLogs;
   os?: string | null;
   browser?: string | null;
   site_url?: string | null;
@@ -32,16 +33,16 @@ interface Capture {
 const TAG_OPTIONS = ["bug", "feature-request", "wip", "design", "other"];
 const STATUS_OPTIONS = ["open", "in-progress", "fixed", "closed"];
 
-function getExpiryCountdown(expiresAt: string): string {
+function getExpiryCountdown(expiresAt: string, t: (k: string, vars?: Record<string, string | number>) => string): string {
   const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return "Expired";
+  if (diff <= 0) return t("v.expired");
   const hours = Math.floor(diff / (1000 * 60 * 60));
   if (hours < 24) {
-    if (hours < 2) return "Expires in under 1 hour";
-    return `Expires in ${hours} hours`;
+    if (hours < 2) return t("v.expiresUnder1h");
+    return t("v.expiresInHours", { n: hours });
   }
   const days = Math.ceil(hours / 24);
-  return `Expires in ${days} day${days === 1 ? "" : "s"}`;
+  return t("v.expiresInDays", { n: days });
 }
 
 function SingleViewContent() {
@@ -49,6 +50,7 @@ function SingleViewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = params.id;
+  const { t } = useT();
 
   const hideDevTools = searchParams.get("devtools") === "false" || searchParams.get("embed") === "true";
 
@@ -288,7 +290,7 @@ function SingleViewContent() {
     try {
       const { data: authData, error: authError } = await supabase.auth.getSession();
       const token = authData.session?.access_token;
-      if (authError || !token) throw new Error("Sign in to generate an AI report.");
+      if (authError || !token) throw new Error(t("v.signInForAi"));
       const res = await fetch("/api/ai-bug-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -299,10 +301,10 @@ function SingleViewContent() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(res.status === 401 ? "Sign in to generate an AI report." : json.error || "Failed to generate AI report.");
+      if (!res.ok) throw new Error(res.status === 401 ? t("v.signInForAi") : json.error || t("v.aiFailed"));
       if (json.summary) setAiSummary(json.summary);
     } catch (error) {
-      setAiSummary(error instanceof Error ? error.message : "Failed to generate AI report.");
+      setAiSummary(error instanceof Error ? error.message : t("v.aiFailed"));
     } finally {
       setAiLoading(false);
     }
@@ -318,7 +320,7 @@ function SingleViewContent() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert("Clipboard permission was denied. Please copy the link from the address bar.");
+      alert(t("v.clipboardDenied"));
     }
   }
 
@@ -360,7 +362,7 @@ function SingleViewContent() {
       setEditModalOpen(false);
     } catch (err) {
       console.warn("Failed to save captures changes:", err);
-      setEditError("Could not save changes. Please try again.");
+      setEditError(t("v.saveError"));
     } finally {
       setSavingEdit(false);
     }
@@ -383,7 +385,7 @@ function SingleViewContent() {
     try {
       const { data, error } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      if (error || !token) throw new Error("Sign in again to delete this capture.");
+      if (error || !token) throw new Error(t("v.signInToDelete"));
 
       const response = await fetch("/api/google-drive/delete", {
         method: "POST",
@@ -404,10 +406,10 @@ function SingleViewContent() {
 
       const isDriveNotConnected = response.status === 409 || /drive.*not connected/i.test(result.error || "");
       if (isDriveNotConnected) setDriveNotConnected(true);
-      throw new Error(captureResult?.error || result.error || "Could not delete this capture. Please try again.");
+      throw new Error(captureResult?.error || result.error || t("v.deleteFailed"));
     } catch (err) {
       console.warn("Failed to delete capture:", err);
-      setDeleteCaptureError(err instanceof Error ? err.message : "Could not delete this capture. Please try again.");
+      setDeleteCaptureError(err instanceof Error ? err.message : t("v.deleteFailed"));
     } finally {
       setDeletingCapture(false);
     }
@@ -426,7 +428,7 @@ function SingleViewContent() {
             <span className="text-base font-bold tracking-tight text-foreground">{brand.name}</span>
           )}
           {!brand.hideWatermark && (
-            <span className="hidden sm:inline-block text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">Screen Recorder</span>
+            <span className="hidden sm:inline-block text-[10px] font-semibold text-muted bg-subtle px-1.5 py-0.5 rounded">{t("layout.screenRecorder")}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3">
@@ -438,7 +440,7 @@ function SingleViewContent() {
               <svg className="w-3.5 h-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
-              <span className="hidden md:inline">Back to Dashboard</span>
+              <span className="hidden md:inline">{t("v.backToDashboard")}</span>
             </Link>
           )}
 
@@ -447,7 +449,7 @@ function SingleViewContent() {
               onClick={handleGenerateAiReport}
               className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-sm"
             >
-              <span>✨ <span className="hidden sm:inline">AI Bug Report</span><span className="sm:hidden">AI</span></span>
+              <span>✨ <span className="hidden sm:inline">{t("v.aiBugReport")}</span><span className="sm:hidden">AI</span></span>
             </button>
           )}
 
@@ -461,7 +463,7 @@ function SingleViewContent() {
                   : "border-border text-muted hover:text-foreground hover:bg-subtle"
               }`}
             >
-              <span>More</span>
+              <span>{t("v.more")}</span>
               <svg className={`w-3.5 h-3.5 text-muted transition-transform ${moreOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
@@ -475,7 +477,7 @@ function SingleViewContent() {
                       onClick={() => { setEmbedModal(true); setMoreOpen(false); }}
                       className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
                     >
-                      Embed
+                      {t("v.embed")}
                     </button>
                   )}
                   {isTeamMember && (
@@ -483,7 +485,7 @@ function SingleViewContent() {
                       onClick={() => { openEditModal(); setMoreOpen(false); }}
                       className="w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 font-semibold rounded-lg transition-colors"
                     >
-                      Edit Capture
+                      {t("v.editCapture")}
                     </button>
                   )}
                   {isWorkspaceOwner && (
@@ -491,7 +493,7 @@ function SingleViewContent() {
                       onClick={() => { handleDeleteCapture(); setMoreOpen(false); }}
                       className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold rounded-lg transition-colors"
                     >
-                      Delete Capture
+                      {t("v.deleteCapture")}
                     </button>
                   )}
                   {isAuthenticated === false && (
@@ -500,7 +502,7 @@ function SingleViewContent() {
                       onClick={() => setMoreOpen(false)}
                       className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-subtle rounded-lg transition-colors"
                     >
-                      Login
+                      {t("v.login")}
                     </a>
                   )}
                 </div>
@@ -514,12 +516,12 @@ function SingleViewContent() {
               onClick={handleCopyLink}
               className="px-3 py-1.5 bg-emerald-400 hover:bg-emerald-500 text-white text-xs font-semibold rounded-l-lg transition-colors border-r border-emerald-500/20"
             >
-              {copied ? "Copied!" : "Copy link"}
+              {copied ? t("v.copied") : t("v.copy")}
             </button>
             <button
               onClick={() => setShareOpen(!shareOpen)}
               className="px-2 py-1.5 bg-emerald-400 hover:bg-emerald-500 text-white text-xs rounded-r-lg transition-colors flex items-center justify-center self-stretch"
-              aria-label="Share options"
+              aria-label={t("v.shareCapture")}
             >
               <svg className={`w-3 h-3 transition-transform ${shareOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -532,7 +534,7 @@ function SingleViewContent() {
                 <div className="fixed inset-0 z-40" onClick={() => setShareOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 w-72 z-50 bg-white border border-border rounded-xl shadow-2xl p-4 flex flex-col gap-4 text-foreground">
                   <div>
-                    <h3 className="text-[11px] font-bold text-muted uppercase tracking-wider">Share Capture</h3>
+                    <h3 className="text-[11px] font-bold text-muted uppercase tracking-wider">{t("v.shareCapture")}</h3>
                   </div>
 
                   {/* Share Cards */}
@@ -550,8 +552,8 @@ function SingleViewContent() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <span className="text-[10px] font-bold">With DevTools</span>
-                      <span className="text-[8px] text-muted leading-tight">Includes logs, console, and steps</span>
+                      <span className="text-[10px] font-bold">{t("v.withDevTools")}</span>
+                      <span className="text-[8px] text-muted leading-tight">{t("v.withDevToolsHint")}</span>
                     </button>
 
                     <button
@@ -567,20 +569,20 @@ function SingleViewContent() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <span className="text-[10px] font-bold">Content Only</span>
-                      <span className="text-[8px] text-muted leading-tight">Clean layout without side logs panel</span>
+                      <span className="text-[10px] font-bold">{t("v.contentOnly")}</span>
+                      <span className="text-[8px] text-muted leading-tight">{t("v.contentOnlyHint")}</span>
                     </button>
                   </div>
 
                   {/* General Access Selection */}
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-muted uppercase tracking-wider">General Access</label>
+                    <label className="text-[9px] font-bold text-muted uppercase tracking-wider">{t("v.generalAccess")}</label>
                     <div className="relative">
                       <select 
                         disabled
                         className="w-full bg-subtle border border-border rounded-lg pl-2 pr-7 py-1.5 text-xs text-foreground outline-none font-medium appearance-none cursor-not-allowed"
                       >
-                        <option>Anyone with the link</option>
+                        <option>{t("v.anyoneWithLink")}</option>
                       </select>
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m19 9-7 7-7-7"/></svg>
@@ -594,7 +596,7 @@ function SingleViewContent() {
                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                   >
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    {copied ? "Copied Link!" : "Copy Link"}
+                    {copied ? t("v.copiedLink") : t("v.copyLinkBtn")}
                   </button>
                 </div>
               </>
@@ -617,9 +619,9 @@ function SingleViewContent() {
               <svg className="w-12 h-12 mx-auto text-muted/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h1 className="text-lg font-semibold text-foreground">Capture not found</h1>
-              <p className="text-sm text-muted mt-1 mb-4">The link you opened doesn&apos;t exist.</p>
-              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">← Login to Mazway</Link>
+              <h1 className="text-lg font-semibold text-foreground">{t("v.notFoundTitle")}</h1>
+              <p className="text-sm text-muted mt-1 mb-4">{t("v.notFoundHint")}</p>
+              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToMazway")}</Link>
             </div>
           )}
 
@@ -628,48 +630,48 @@ function SingleViewContent() {
               <svg className="w-12 h-12 mx-auto text-muted/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h1 className="text-lg font-semibold text-foreground">Link has expired</h1>
-              <p className="text-sm text-muted mt-1 mb-4">This capture is no longer available.</p>
-              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">← Login to Mazway</Link>
+              <h1 className="text-lg font-semibold text-foreground">{t("v.expiredTitle")}</h1>
+              <p className="text-sm text-muted mt-1 mb-4">{t("v.expiredHint")}</p>
+              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToMazway")}</Link>
             </div>
           )}
 
           {status === "unauthorized_ip" && (
             <div className="text-center max-w-sm">
-              <h1 className="text-lg font-semibold text-foreground">Access Restricted</h1>
-              <p className="text-sm text-muted mt-1">Your IP address is not authorized.</p>
+              <h1 className="text-lg font-semibold text-foreground">{t("v.accessRestricted")}</h1>
+              <p className="text-sm text-muted mt-1">{t("v.ipNotAuthorized")}</p>
             </div>
           )}
 
           {status === "needs_login" && (
             <div className="text-center max-w-sm">
-              <h1 className="text-lg font-semibold text-foreground">Login Required</h1>
-              <p className="text-sm text-muted mt-1 mb-6">This link is restricted to specific domains.</p>
-              <a href="/" className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Sign In</a>
+              <h1 className="text-lg font-semibold text-foreground">{t("v.loginRequired")}</h1>
+              <p className="text-sm text-muted mt-1 mb-6">{t("v.domainRestricted")}</p>
+              <a href="/" className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{t("v.signIn")}</a>
             </div>
           )}
 
           {status === "unauthorized_domain" && (
             <div className="text-center max-w-sm">
-              <h1 className="text-lg font-semibold text-foreground">Access Denied</h1>
-              <p className="text-sm text-muted mt-1">Your domain is not authorized.</p>
+              <h1 className="text-lg font-semibold text-foreground">{t("v.accessDenied")}</h1>
+              <p className="text-sm text-muted mt-1">{t("v.domainNotAuthorized")}</p>
             </div>
           )}
 
           {status === "locked" && (
             <div className="w-full max-w-sm text-center">
-              <h1 className="text-lg font-semibold text-foreground mb-4">Password Protected</h1>
+              <h1 className="text-lg font-semibold text-foreground mb-4">{t("v.passwordProtected")}</h1>
               <form onSubmit={submitPassword} className="flex flex-col gap-3">
                 <input
                   type="password"
                   value={passwordInput}
                   onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
-                  placeholder="Password"
+                  placeholder={t("v.passwordPlaceholder")}
                   className={`w-full text-sm rounded-lg border px-3 py-2.5 outline-none bg-white ${passwordError ? "border-red-400" : "border-border focus:border-indigo-500"}`}
                 />
-                {passwordError && <p className="text-xs text-red-600 text-left">Incorrect password.</p>}
+                {passwordError && <p className="text-xs text-red-600 text-left">{t("v.incorrectPassword")}</p>}
                 <button type="submit" disabled={checkingPassword} className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-medium text-white disabled:opacity-50">
-                  {checkingPassword ? "Unlocking..." : "Unlock"}
+                  {checkingPassword ? t("v.unlocking") : t("v.unlock")}
                 </button>
               </form>
             </div>
@@ -690,7 +692,7 @@ function SingleViewContent() {
                   {capture.description && <p className="text-xs text-muted mt-0.5">{capture.description}</p>}
                   {capture.expires_at && (
                     <p className="text-[11px] text-muted mt-1 font-medium">
-                      {getExpiryCountdown(capture.expires_at)}
+                      {getExpiryCountdown(capture.expires_at, t)}
                     </p>
                   )}
                   {capture.drive_url && (
@@ -705,13 +707,13 @@ function SingleViewContent() {
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6M10 14L20 4" />
                           </svg>
-                          Drive Link
+                          {t("v.driveLink")}
                         </a>
                       )}
                     </div>
                   )}
                 </div>
-                {viewCount !== null && <span className="shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">👁 {viewCount} views</span>}
+                {viewCount !== null && <span className="shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">{t("v.viewCount", { count: viewCount })}</span>}
               </div>
 
               <div className="pt-2 border-t border-border/40">
@@ -731,10 +733,10 @@ function SingleViewContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditModalOpen(false)} />
           <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-border p-6">
-            <h2 className="text-base font-bold text-foreground mb-4">Edit Capture</h2>
+            <h2 className="text-base font-bold text-foreground mb-4">{t("v.editCapture")}</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-muted mb-1.5">Title</label>
+                <label className="block text-xs font-semibold text-muted mb-1.5">{t("v.titleLabel")}</label>
                 <input
                   type="text"
                   value={editTitle}
@@ -743,7 +745,7 @@ function SingleViewContent() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-muted mb-1.5">Description</label>
+                <label className="block text-xs font-semibold text-muted mb-1.5">{t("v.descLabel")}</label>
                 <textarea
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
@@ -752,14 +754,14 @@ function SingleViewContent() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1.5">Tag</label>
+                  <label className="block text-xs font-semibold text-muted mb-1.5">{t("v.tagLabel")}</label>
                   <select value={editTag} onChange={(e) => setEditTag(e.target.value)} className="w-full text-sm rounded-lg border border-border px-3 py-2 bg-white">
-                    <option value="">No tag</option>
+                    <option value="">{t("v.noTag")}</option>
                     {TAG_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1.5">Status</label>
+                  <label className="block text-xs font-semibold text-muted mb-1.5">{t("v.statusLabel")}</label>
                   <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="w-full text-sm rounded-lg border border-border px-3 py-2 bg-white">
                     {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -768,34 +770,34 @@ function SingleViewContent() {
 
               <div className="pt-2 border-t border-border/60 space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1">Allowed Email Domains (Enterprise Security)</label>
+                  <label className="block text-xs font-semibold text-muted mb-1">{t("v.domainsLabel")}</label>
                   <input
                     type="text"
                     value={editAllowedDomains}
                     onChange={(e) => setEditAllowedDomains(e.target.value)}
-                    placeholder="e.g. company.com, partner.com"
+                    placeholder={t("v.domainsPlaceholder")}
                     className="w-full text-xs font-mono rounded-lg border border-border px-3 py-2 bg-white"
                   />
-                  <p className="text-[10px] text-muted mt-1">Restricts access to viewers logged in with matching email domain.</p>
+                  <p className="text-[10px] text-muted mt-1">{t("v.domainsHint")}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1">Allowed IP Addresses</label>
+                  <label className="block text-xs font-semibold text-muted mb-1">{t("v.ipsLabel")}</label>
                   <input
                     type="text"
                     value={editAllowedIps}
                     onChange={(e) => setEditAllowedIps(e.target.value)}
-                    placeholder="e.g. 180.252.1.2, 10.0.0.1"
+                    placeholder={t("v.ipsPlaceholder")}
                     className="w-full text-xs font-mono rounded-lg border border-border px-3 py-2 bg-white"
                   />
-                  <p className="text-[10px] text-muted mt-1">Restricts access to specific network IPs.</p>
+                  <p className="text-[10px] text-muted mt-1">{t("v.ipsHint")}</p>
                 </div>
               </div>
               {editError && <p className="text-xs text-red-600">{editError}</p>}
             </div>
             <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border">
-              <button onClick={() => setEditModalOpen(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">Cancel</button>
+              <button onClick={() => setEditModalOpen(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">{t("common.cancel")}</button>
               <button onClick={handleSaveEdit} disabled={savingEdit} className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-                {savingEdit ? "Saving..." : "Save Changes"}
+                {savingEdit ? t("v.saving") : t("v.saveChanges")}
               </button>
             </div>
           </div>
@@ -808,12 +810,12 @@ function SingleViewContent() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setEmbedModal(false)} />
           <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-foreground">Embed Capture</h3>
+              <h3 className="text-base font-bold text-foreground">{t("v.embedTitle")}</h3>
               <button onClick={() => setEmbedModal(false)} className="text-muted hover:text-foreground">✕</button>
             </div>
             <textarea readOnly value={embedCode} className="w-full h-20 text-xs font-mono p-2 bg-subtle border border-border rounded-lg outline-none resize-none" />
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setEmbedModal(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">Close</button>
+              <button onClick={() => setEmbedModal(false)} className="px-4 py-2 text-xs font-medium text-muted hover:text-foreground">{t("v.close")}</button>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(embedCode);
@@ -822,7 +824,7 @@ function SingleViewContent() {
                 }}
                 className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
               >
-                {embedCopied ? "Copied!" : "Copy Code"}
+                {embedCopied ? t("v.copiedCode") : t("v.copyCode")}
               </button>
             </div>
           </div>
@@ -835,23 +837,23 @@ function SingleViewContent() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setAiModal(false)} />
           <div className="relative w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl border border-border max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold text-foreground">✨ AI Bug Report</h3>
-              <button onClick={() => setAiModal(false)} className="text-muted hover:text-foreground" aria-label="Close">
+              <h3 className="text-base font-bold text-foreground">{t("v.aiReportTitle")}</h3>
+              <button onClick={() => setAiModal(false)} className="text-muted hover:text-foreground" aria-label={t("common.close")}>
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <p className="text-xs text-muted mb-4">
-              Auto-generated analysis from captured console errors, network activity, and user actions.
+              {t("v.aiDesc")}
             </p>
 
             {aiLoading ? (
               <div className="py-10 flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                <p className="text-xs text-muted">Analyzing capture data...</p>
+                <p className="text-xs text-muted">{t("v.analyzing")}</p>
               </div>
             ) : (
               <pre className="text-xs font-mono whitespace-pre-wrap bg-subtle/60 border border-border rounded-lg p-4 text-foreground leading-relaxed max-h-[50vh] overflow-y-auto">
-                {aiSummary || "Click Generate to create the report."}
+                {aiSummary || t("v.generatePrompt")}
               </pre>
             )}
 
@@ -863,7 +865,7 @@ function SingleViewContent() {
                   rel="noopener noreferrer"
                   className="px-3 py-2 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-subtle transition-colors"
                 >
-                  GitHub Issue
+                  {t("v.githubIssue")}
                 </a>
                 <a
                   href={`https://linear.app/issue?title=${encodeURIComponent(capture?.title || "Bug")}&description=${encodeURIComponent(aiSummary)}`}
@@ -883,7 +885,7 @@ function SingleViewContent() {
                 disabled={!aiSummary}
                 className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
-                {aiCopied ? "Copied!" : "Copy Report"}
+                {aiCopied ? t("v.copiedReport") : t("v.copyReport")}
               </button>
             </div>
           </div>
@@ -900,22 +902,22 @@ function SingleViewContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-foreground mb-2">Delete Capture?</h2>
+            <h2 className="text-lg font-bold text-foreground mb-2">{t("v.deleteCaptureQ")}</h2>
             <p className="text-xs text-muted leading-relaxed mb-4">
-              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>?
+              {t("v.deleteConfirm", { title: capture?.title ?? "" })}
             </p>
             <fieldset className="space-y-2 text-left mb-4" disabled={deletingCapture}>
-              <legend className="text-xs font-semibold text-foreground mb-2">Delete from</legend>
+              <legend className="text-xs font-semibold text-foreground mb-2">{t("v.deleteFrom")}</legend>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
                 <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteOperationId(crypto.randomUUID()); }} className="mt-0.5" />
-                <span><span className="block text-xs font-semibold text-foreground">Move to Drive trash + delete from Mazway</span><span className="block text-[11px] text-muted mt-0.5">Default. The Drive file can still be restored from trash.</span></span>
+                <span><span className="block text-xs font-semibold text-foreground">{t("v.moveToTrash")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.trashHint")}</span></span>
               </label>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
                 <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
-                <span><span className="block text-xs font-semibold text-foreground">Delete from Mazway only</span><span className="block text-[11px] text-muted mt-0.5">Keeps the original file in Google Drive.</span></span>
+                <span><span className="block text-xs font-semibold text-foreground">{t("v.mazwayOnly")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.mazwayOnlyHint")}</span></span>
               </label>
             </fieldset>
-            {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">Google Drive is not connected. Reconnect Drive or choose Mazway only.</p>}
+            {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">{t("v.driveNotConnected")}</p>}
             {deleteCaptureError && <p role="alert" className="text-xs text-red-600 mb-3">{deleteCaptureError}</p>}
             
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
@@ -924,14 +926,14 @@ function SingleViewContent() {
                 disabled={deletingCapture}
                 className="px-4 py-2 text-sm font-medium text-foreground hover:bg-subtle rounded-lg transition-colors disabled:opacity-50"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={submitDeleteCapture}
                 disabled={deletingCapture}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
-                {deletingCapture ? "Deleting..." : "Confirm delete"}
+                {deletingCapture ? t("v.deleting") : t("v.confirmDelete")}
               </button>
             </div>
           </div>

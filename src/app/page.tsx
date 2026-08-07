@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useT } from "@/components/I18nProvider";
 
 export default function Home() {
+  const { t } = useT();
   const router = useRouter();
   const [signingIn, setSigningIn] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -41,29 +43,17 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Auth fallback failed:", err);
-      setError("Authentication failed. Please verify your Supabase configuration.");
+      setError(t("landing.authFailed"));
     } finally {
       setSigningIn(false);
     }
   }
 
   const faqItems = [
-    {
-      q: "How does the Google Drive integration work?",
-      a: "Your captures live in your own Google Drive, so you stay in full control of your data. Mazway handles the heavy lifting behind the scenes and gives you a clean, shareable link in seconds."
-    },
-    {
-      q: "Are the attached DevTools logs secure?",
-      a: "Yes. Only clean, diagnostic information is attached to your captures. Sensitive details are automatically excluded so you can share with confidence."
-    },
-    {
-      q: "Is Mazway really free forever?",
-      a: "Yes! The core screen recorder and Google Drive storage integration is completely free. Paid plans unlock advanced team controls for growing teams."
-    },
-    {
-      q: "Do my team members need the extension to view links?",
-      a: "No. Anyone you share a link with can view the recording, screenshots, and attached context directly in their web browser. No downloads, no sign-ups."
-    }
+    { q: "landing.faq1q", a: "landing.faq1a" },
+    { q: "landing.faq2q", a: "landing.faq2a" },
+    { q: "landing.faq3q", a: "landing.faq3a" },
+    { q: "landing.faq4q", a: "landing.faq4a" },
   ];
 
   return (
@@ -96,7 +86,7 @@ export default function Home() {
               href="/dashboard"
               className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
             >
-              Go to Dashboard →
+              {t("landing.goToDashboard")}
             </Link>
           ) : (
             <button
@@ -104,7 +94,7 @@ export default function Home() {
               disabled={signingIn}
               className="text-sm font-medium text-muted hover:text-foreground transition-colors disabled:opacity-60"
             >
-              {signingIn ? "Redirecting..." : "Sign in"}
+              {signingIn ? t("landing.redirecting") : t("landing.signIn")}
             </button>
           )}
         </div>
@@ -115,20 +105,19 @@ export default function Home() {
         <section className="mx-auto max-w-6xl px-6 pt-20 pb-16 text-center">
           <div className="mx-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-subtle px-3 py-1 text-xs font-medium text-muted mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Free forever with Google Drive
+            {t("landing.freeForever")}
           </div>
           <h1 className="mx-auto max-w-3xl text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-foreground leading-[1.1]">
-            Bug reporting made instant
+            {t("landing.tagline")}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base sm:text-lg text-muted">
-            Turn screen moments into bug reports your team can act on in seconds —
-            with automatic context, zero friction for testers, and one link to share.
+            {t("landing.heroSub")}
           </p>
 
           {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
 
           <p className="mt-6 text-xs text-muted">
-            Free to start. No credit card. No complexity.
+            {t("landing.noCard")}
           </p>
         </section>
 
@@ -139,15 +128,14 @@ export default function Home() {
             {/* 1. Capture */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div>
-                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">Capture anything in one click</h3>
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">{t("landing.f1Title")}</h3>
                 <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
-                  Record your screen or snap a screenshot, annotate it with arrows,
-                  highlights and text, then share a link instantly. No uploads, no friction.
+                  {t("landing.f1Body")}
                 </p>
               </div>
               <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/50">
-                  <span className="text-xs font-medium text-muted">mazwayScreen — Editor</span>
+                  <span className="text-xs font-medium text-muted">{t("landing.editorLabel")}</span>
                   <div className="flex gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
@@ -177,16 +165,16 @@ export default function Home() {
               <div className="order-2 lg:order-1">
                 <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
                   <div className="flex items-center gap-4 border-b border-border px-4 py-2.5 bg-subtle/50 text-xs font-medium text-muted">
-                    <span className="text-indigo-600 font-semibold border-b-2 border-indigo-600 pb-0.5">Info</span>
-                    <span>Console <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-amber-400" /></span>
-                    <span>Network <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-red-400" /></span>
-                    <span>Actions</span>
+                    <span className="text-indigo-600 font-semibold border-b-2 border-indigo-600 pb-0.5">{t("dt.info")}</span>
+                    <span>{t("dt.console")} <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-amber-400" /></span>
+                    <span>{t("dt.network")} <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-red-400" /></span>
+                    <span>{t("dt.actions")}</span>
                   </div>
                   <div className="p-4 space-y-3">
-                    <div className="flex text-xs"><span className="w-24 text-muted">Timestamp</span><span className="text-foreground font-medium">July 31, 2026 at 3:15 PM</span></div>
-                    <div className="flex text-xs"><span className="w-24 text-muted">OS</span><span className="text-foreground font-medium">Windows</span></div>
-                    <div className="flex text-xs"><span className="w-24 text-muted">Browser</span><span className="text-foreground font-medium">Chrome 140</span></div>
-                    <div className="flex text-xs"><span className="w-24 text-muted">Window size</span><span className="text-foreground font-medium">1920x1080</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.timestamp")}</span><span className="text-foreground font-medium">July 31, 2026 at 3:15 PM</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.os")}</span><span className="text-foreground font-medium">Windows</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.browser")}</span><span className="text-foreground font-medium">Chrome 140</span></div>
+                    <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.windowSize")}</span><span className="text-foreground font-medium">1920x1080</span></div>
                     <div className="mt-3 rounded-md bg-red-50 border border-red-100 px-3 py-2 font-mono text-[11px] text-red-700">
                       POST /api/v1/auth 500 · Failed to fetch
                     </div>
@@ -197,10 +185,9 @@ export default function Home() {
                 </div>
               </div>
               <div className="order-1 lg:order-2">
-                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">DevTools context attached automatically</h3>
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">{t("landing.f2Title")}</h3>
                 <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
-                  Console errors, failed network requests and every user action are
-                  captured and attached to the recording — no more &quot;works on my machine&quot;.
+                  {t("landing.f2Body")}
                 </p>
               </div>
             </div>
@@ -208,29 +195,28 @@ export default function Home() {
             {/* 3. Share & Dashboard */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div>
-                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">Share once, fix faster</h3>
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight">{t("landing.f3Title")}</h3>
                 <p className="mt-3 text-sm text-muted leading-relaxed max-w-md">
-                  Every capture lives in your Google Drive and appears in your personal
-                  dashboard. Copy a link, embed it in a ticket, or keep it private.
+                  {t("landing.f3Body")}
                 </p>
               </div>
               <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-subtle/50">
-                  <span className="text-xs font-medium text-muted">Recordings</span>
+                  <span className="text-xs font-medium text-muted">{t("landing.recordings")}</span>
                   <div className="flex gap-2">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">All</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-600 font-medium">Videos</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">Screenshots</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">{t("landing.all")}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-600 font-medium">{t("landing.videos")}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-white text-muted">{t("landing.screenshots")}</span>
                   </div>
                 </div>
                 <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {["Bug on login modal", "Checkout flow", "Design review"].map((t) => (
-                    <div key={t} className="rounded-lg border border-border overflow-hidden">
+                  {[t("landing.mock1"), t("landing.mock2"), t("landing.mock3")].map((m) => (
+                    <div key={m} className="rounded-lg border border-border overflow-hidden">
                       <div className="aspect-video bg-subtle/70 flex items-center justify-center">
                         <svg viewBox="0 0 24 24" className="w-6 h-6 text-indigo-500/60" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                       </div>
                       <div className="px-2.5 py-2">
-                        <div className="text-[10px] font-medium text-foreground truncate">{t}</div>
+                        <div className="text-[10px] font-medium text-foreground truncate">{m}</div>
                         <div className="text-[9px] text-muted mt-0.5">Jul 31 · 1920x1080</div>
                       </div>
                     </div>
@@ -246,13 +232,13 @@ export default function Home() {
         <section className="border-t border-border bg-subtle/30 py-20">
           <div className="mx-auto max-w-4xl px-6">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center text-foreground mb-12">
-              Frequently Asked Questions
+              {t("landing.faq")}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {faqItems.map((faq, i) => (
                 <div key={i} className="space-y-2">
-                  <h4 className="text-sm font-semibold text-foreground">{faq.q}</h4>
-                  <p className="text-xs text-muted leading-relaxed">{faq.a}</p>
+                  <h4 className="text-sm font-semibold text-foreground">{t(faq.q)}</h4>
+                  <p className="text-xs text-muted leading-relaxed">{t(faq.a)}</p>
                 </div>
               ))}
             </div>
@@ -263,10 +249,10 @@ export default function Home() {
         <section className="border-t border-border">
           <div className="mx-auto max-w-6xl px-6 py-16 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Ready to speed up your QA pipeline?
+              {t("landing.cta2")}
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-              Get the Chrome extension to record bugs with complete console & network error logs in one click.
+              {t("landing.ctaHint")}
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <button
@@ -276,7 +262,7 @@ export default function Home() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                Install Chrome Extension
+                {t("landing.cta")}
               </button>
             </div>
           </div>
@@ -307,50 +293,50 @@ export default function Home() {
                 <span className="text-sm font-semibold">Mazway</span>
               </div>
               <p className="text-xs text-muted max-w-xs leading-relaxed">
-                The fastest way to record screen activities, capture network requests, and report website bugs with automatic DevTools logs.
+                {t("landing.footDesc")}
               </p>
             </div>
 
             {/* Links column 1 */}
             <div className="space-y-3">
-              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Product</h5>
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.product")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">Screen Recorder</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">DevTools Integration</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Pricing Plans</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Security Guard</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.screenRecorder")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.devTools")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.pricing")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.security")}</a></li>
               </ul>
             </div>
 
             {/* Links column 2 */}
             <div className="space-y-3">
-              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Resources</h5>
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.resources")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Chrome Extension</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">API Status</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.help")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.apiStatus")}</a></li>
               </ul>
             </div>
 
             {/* Links column 3 */}
             <div className="space-y-3">
-              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Company</h5>
+              <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.company")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Contact</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.about")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.privacy")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.terms")}</a></li>
+                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.contact")}</a></li>
               </ul>
             </div>
           </div>
 
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-muted">
-              &copy; {new Date().getFullYear()} Mazway. All rights reserved.
+              {t("landing.copyright", { year: new Date().getFullYear() })}
             </p>
             <p className="text-xs text-muted">
-              Built natively on top of Google Drive API & Supabase.
+              {t("landing.builtOn")}
             </p>
           </div>
         </div>

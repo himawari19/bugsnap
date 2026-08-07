@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/components/I18nProvider";
 
 interface TimedLog {
   time?: string;
@@ -37,9 +38,25 @@ export interface ScreenshotLog extends TimedLog {
 }
 export type DevLog = ConsoleLog | NetworkLog | ActionLog | NavigationLog | ScreenshotLog;
 
+// Compact health snapshot persisted by the extension (v1). Replaces the raw
+// log array on the wire; legacy captures keep dev_logs as DevLog[].
+export interface DevLogSummary {
+  version: number;
+  errors: number;
+  warnings: number;
+  failedRequests: number;
+  topErrors?: string[];
+  failedUrls?: string[];
+}
+export type CapturedLogs = DevLog[] | DevLogSummary | null;
+
+function isSummary(logs: unknown): logs is DevLogSummary {
+  return !!logs && typeof logs === "object" && typeof (logs as Record<string, unknown>).version === "number";
+}
+
 // Metadata is read as flat top-level capture fields (`os`, `browser`),
-// matching how the extension stores them as columns on captures.
-// Null/undefined falls back to the placeholders below.
+// matching how the extension stores them as columns. Null/undefined falls
+// back to the placeholders below.
 interface Props {
   capture: {
     drive_url: string;
@@ -48,7 +65,7 @@ interface Props {
     window_size?: string | null;
     os?: string | null;
     browser?: string | null;
-    dev_logs?: DevLog[] | null;
+    dev_logs?: CapturedLogs;
   };
 }
 
@@ -135,11 +152,21 @@ function isTracker(url?: string) {
 }
 
 export default function DevToolsPanel({ capture }: Props) {
+  const { t } = useT();
   const [activeTab, setActiveTab] = useState<Tab>("Info");
   const [logSearch, setLogSearch] = useState("");
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
 
-  const logs = Array.isArray(capture.dev_logs) ? capture.dev_logs : [];
+  // New captures ship a compact health summary; legacy captures carry a raw
+  // array. Normalize both to an array so every downstream filter/tab just
+  // works. A clean page stores ~0 bytes (summary is null) → empty arrays.
+  const summaryOnly = !Array.isArray(capture.dev_logs) && isSummary(capture.dev_logs);
+  const logs: DevLog[] = Array.isArray(capture.dev_logs)
+    ? capture.dev_logs
+    : isSummary(capture.dev_logs)
+      ? []
+      : [];
+  const summary = summaryOnly ? (capture.dev_logs as DevLogSummary) : null;
 
   const earliestTimestamp = logs.reduce((min, log) => {
     const ts = new Date(log.time || log.timestamp || "").getTime();
@@ -263,20 +290,21 @@ export default function DevToolsPanel({ capture }: Props) {
     setTimeout(() => setCopiedMd(false), 2000);
   }
 
-  const tabLabel = (t: Tab) => {
-    if (t === "Console" && consoleLogs.length) return `Console (${totalLogCount(consoleLogs)})`;
-    if (t === "Network" && networkLogs.length) return `Network (${totalLogCount(networkLogs)})`;
-    if (t === "Actions" && actionLogs.length)  return `Actions (${totalLogCount(actionLogs)})`;
-    return t;
+  const tabLabel = (tab: Tab) => {
+    if (tab === "Console" && consoleLogs.length) return `${t("dt.console")} (${totalLogCount(consoleLogs)})`;
+    if (tab === "Network" && networkLogs.length) return `${t("dt.network")} (${totalLogCount(networkLogs)})`;
+    if (tab === "Actions" && actionLogs.length)  return `${t("dt.actions")} (${totalLogCount(actionLogs)})`;
+    return t(`dt.${tab.toLowerCase()}`);
   };
 
   return (
     <div className="w-full lg:w-[360px] border-t lg:border-t-0 lg:border-l border-border bg-white flex flex-col shrink-0 h-[450px] lg:h-auto min-h-0 max-h-full">
       {/* Header */}
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
-        <span className="text-sm font-semibold text-foreground">DevTools</span>
+        <span className="text-sm font-semibold text-foreground">{t("v.devTools")}</span>
         <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-          {totalLogCount(consoleLogs) + totalLogCount(networkLogs) + totalLogCount(actionLogs)} events
+          {summary ? (summary.errors === 0 && summary.warnings === 0 && summary.failedRequests === 0 ? t("dt.clean", { n: 0 }) : t("dt.events", { n: summary.errors + summary.warnings + summary.failedRequests }))
+            : t("dt.events", { n: totalLogCount(consoleLogs) + totalLogCount(networkLogs) + totalLogCount(actionLogs) })}
         </span>
       </div>
 
@@ -310,7 +338,7 @@ export default function DevToolsPanel({ capture }: Props) {
               </svg>
               <input
                 type="text"
-                placeholder={`Search ${activeTab.toLowerCase()}...`}
+                placeholder={t("dt.search", { tab: tabLabel(activeTab) })}
                 value={logSearch}
                 onChange={(e) => setLogSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border text-xs bg-white outline-none focus:border-indigo-500"
@@ -325,7 +353,7 @@ export default function DevToolsPanel({ capture }: Props) {
                     !showErrorsOnly ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground"
                   }`}
                 >
-                  All
+                  {t("dt.all")}
                 </button>
                 <button
                   type="button"
@@ -334,7 +362,7 @@ export default function DevToolsPanel({ capture }: Props) {
                     showErrorsOnly ? "bg-red-50 text-red-600 shadow-sm border border-red-100" : "text-muted hover:text-red-500"
                   }`}
                 >
-                  Errors Only
+                  {t("dt.errorsOnly")}
                 </button>
               </div>
             )}
@@ -370,7 +398,7 @@ export default function DevToolsPanel({ capture }: Props) {
                       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                     </svg>
                   ),
-                  label: "Timestamp",
+                  labelKey: "dt.timestamp",
                   value: createdAt,
                 },
                 {
@@ -379,7 +407,7 @@ export default function DevToolsPanel({ capture }: Props) {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                     </svg>
                   ),
-                  label: "Location",
+                  labelKey: "dt.location",
                   value: "Indonesia",
                 },
                 {
@@ -388,7 +416,7 @@ export default function DevToolsPanel({ capture }: Props) {
                       <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                   ),
-                  label: "OS",
+                  labelKey: "dt.os",
                   value: detectedOs,
                 },
                 {
@@ -399,7 +427,7 @@ export default function DevToolsPanel({ capture }: Props) {
                       <line x1="10.88" y1="21.94" x2="15.46" y2="14"/>
                     </svg>
                   ),
-                  label: "Browser",
+                  labelKey: "dt.browser",
                   value: detectedBrowser,
                 },
                 {
@@ -409,14 +437,14 @@ export default function DevToolsPanel({ capture }: Props) {
                       <path d="M12 16v5M8 21h8"/>
                     </svg>
                   ),
-                  label: "Window size",
+                  labelKey: "dt.windowSize",
                   value: capture.window_size || "-",
                 },
               ].map((row) => (
-                <div key={row.label} className="flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-0">
+                <div key={row.labelKey} className="flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-0">
                   <div className="flex items-center gap-2 text-muted">
                     {row.icon}
-                    <span className="text-xs">{row.label}</span>
+                    <span className="text-xs">{t(row.labelKey)}</span>
                   </div>
                   <span className="text-xs font-medium text-foreground">{row.value}</span>
                 </div>
@@ -432,7 +460,7 @@ export default function DevToolsPanel({ capture }: Props) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
-                {copiedMd ? "Copied Report!" : "Copy Report for Jira/GitHub"}
+                {copiedMd ? t("dt.copiedReport") : t("dt.copyReport")}
               </button>
               <button
                 onClick={downloadJson}
@@ -443,7 +471,7 @@ export default function DevToolsPanel({ capture }: Props) {
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                Download JSON
+                {t("dt.downloadJson")}
               </button>
             </div>
           </div>
@@ -453,19 +481,44 @@ export default function DevToolsPanel({ capture }: Props) {
         {activeTab === "Console" && (
           <div>
             {consoleLogs.length === 0 ? (
-              <div className="py-14 text-center text-xs text-muted">No matching console events</div>
+              summary ? (
+                <div className="px-4 py-5 space-y-3">
+                  {summary.errors === 0 && summary.warnings === 0 ? (
+                    <div className="py-10 flex flex-col items-center gap-2 text-center text-xs text-muted">
+                      <svg className="w-8 h-8 text-emerald-500/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                      <p className="font-medium text-emerald-700">{t("dt.pageRanClean")}</p>
+                      <p className="text-[11px]">{t("dt.noConsoleErrors")}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2">
+                        <span className="text-lg font-bold text-red-600">{summary.errors}</span>
+                        <span className="text-xs text-red-700">{summary.errors === 1 ? t("dt.consoleErrOne") : t("dt.consoleErr")}</span>
+                        {summary.warnings > 0 && (
+                          <span className="text-[10px] ml-auto text-amber-700">{t("dt.warnSuffix", { n: summary.warnings })}</span>
+                        )}
+                      </div>
+                      {(summary.topErrors || []).map((msg, i) => (
+                        <p key={i} className="text-[11px] leading-4 text-foreground/90 border-b border-border/50 pb-1.5">{msg}</p>
+                      ))}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="py-14 text-center text-xs text-muted">{t("dt.noConsoleEvents")}</div>
+              )
             ) : consoleLogs.map((log, i) => {
               const level = log.type === "console" ? normalizeLevel(log.level) : log.type;
               const isWarn = level === "warn";
               const detail = log.type === "console" ? conciseConsoleText(log)
-                : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? "Screenshot taken" : "Navigation");
+                : log.message || ("url" in log ? log.url : "") || (log.type === "screenshot" ? t("dt.screenshotTaken") : t("dt.navigation"));
               const fullText = log.type === "console" ? consoleText(log) : detail;
               return (
                 <div key={i} className={`grid grid-cols-[42px_18px_minmax(0,1fr)_auto] gap-1.5 border-b border-border/70 px-2 py-1.5 text-xs ${isWarn ? "bg-amber-50/60" : level === "error" ? "bg-red-50/60" : "bg-white"}`}>
                   <time className="pt-0.5 text-[9px] tabular-nums text-muted" title={eventTime(log)}>{getRelativeTime(log)}</time>
-                  <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" ? "text-red-600" : "text-muted"}`} aria-label={`${level} event`} title={level}>{isWarn ? "!" : level === "error" ? "×" : "•"}</span>
+                  <span className={`pt-0.5 text-center font-bold ${isWarn ? "text-amber-600" : level === "error" ? "text-red-600" : "text-muted"}`} aria-label={level === "error" ? t("dt.consoleError") : `${level} event`} title={level}>{isWarn ? "!" : level === "error" ? "×" : "•"}</span>
                   <p className="min-w-0 overflow-hidden text-ellipsis break-words leading-4 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={fullText}>{detail}</p>
-                  {logCount(log) > 1 && <span className="text-[9px] font-semibold text-muted" aria-label={`Repeated ${logCount(log)} times`}>×{logCount(log)}</span>}
+                  {logCount(log) > 1 && <span className="text-[9px] font-semibold text-muted" aria-label={t("dt.repeated", { n: logCount(log) })}>×{logCount(log)}</span>}
                 </div>
               );
             })}
@@ -476,11 +529,33 @@ export default function DevToolsPanel({ capture }: Props) {
         {activeTab === "Network" && (
           <div className="overflow-x-auto">
             {networkLogs.length === 0 ? (
-              <div className="py-14 text-center text-xs text-muted">No network errors recorded</div>
+              summary ? (
+                <div className="px-4 py-5 space-y-3">
+                  {summary.failedRequests === 0 ? (
+                    <div className="py-10 flex flex-col items-center gap-2 text-center text-xs text-muted">
+                      <svg className="w-8 h-8 text-emerald-500/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                      <p className="font-medium text-emerald-700">{t("dt.noFailedRequests")}</p>
+                      <p className="text-[11px]">{t("dt.allNetworkOk")}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2">
+                        <span className="text-lg font-bold text-red-600">{summary.failedRequests}</span>
+                        <span className="text-xs text-red-700">{summary.failedRequests === 1 ? t("dt.failedReqOne") : t("dt.failedReq")}</span>
+                      </div>
+                      {(summary.failedUrls || []).map((url, i) => (
+                        <p key={i} className="truncate text-[11px] font-mono text-foreground/80 border-b border-border/50 pb-1.5" title={url}>{url}</p>
+                      ))}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="py-14 text-center text-xs text-muted">{t("dt.noNetworkErrors")}</div>
+              )
             ) : (
-              <table className="w-full min-w-[350px] table-fixed text-left text-[10px]" aria-label="Network requests">
+              <table className="w-full min-w-[350px] table-fixed text-left text-[10px]" aria-label={t("dt.network")}>
                 <thead className="sticky top-0 z-10 bg-subtle text-[9px] uppercase tracking-wide text-muted">
-                  <tr><th className="w-14 px-2 py-1.5 font-semibold">Method</th><th className="w-14 px-1 py-1.5 font-semibold">Status</th><th className="w-14 px-1 py-1.5 font-semibold">Type</th><th className="px-1 py-1.5 font-semibold">Domain</th></tr>
+                  <tr><th className="w-14 px-2 py-1.5 font-semibold">{t("dt.method")}</th><th className="w-14 px-1 py-1.5 font-semibold">{t("dt.status")}</th><th className="w-14 px-1 py-1.5 font-semibold">{t("dt.type")}</th><th className="px-1 py-1.5 font-semibold">{t("dt.domain")}</th></tr>
                 </thead>
                 <tbody>
                   {groupedNetworkLogs.map(({ log, count }, i) => {
@@ -494,7 +569,7 @@ export default function DevToolsPanel({ capture }: Props) {
                         <td className="min-w-0 px-1 py-1.5" title={fullLocation}>
                           <div className="flex min-w-0 items-center gap-1">
                             <span className="truncate font-medium">{domain}</span>
-                            {count > 1 && <span className="shrink-0 font-semibold text-muted" aria-label={`Repeated ${count} times`}>×{count}</span>}
+                            {count > 1 && <span className="shrink-0 font-semibold text-muted" aria-label={t("dt.repeated", { n: count })}>×{count}</span>}
                           </div>
                           {path && <div className="truncate font-mono text-[9px] text-muted">{path}</div>}
                         </td>
@@ -515,7 +590,7 @@ export default function DevToolsPanel({ capture }: Props) {
                 <svg className="w-8 h-8 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/>
                 </svg>
-                <p className="text-xs">No user actions recorded</p>
+                <p className="text-xs">{t("dt.noActions")}</p>
               </div>
             ) : (
               <div className="relative">
@@ -548,7 +623,7 @@ export default function DevToolsPanel({ capture }: Props) {
                           <div className="flex items-center gap-2">
                             {eventTime(log) && <span className="text-[10px] text-muted font-mono">{getRelativeTime(log)}</span>}
                           </div>
-                          <p className="text-xs text-foreground leading-relaxed">{log.type === "navigation" ? `Navigate to ${log.url || log.message || ""}` : log.message || ""}</p>
+                          <p className="text-xs text-foreground leading-relaxed">{log.type === "navigation" ? t("dt.navigateTo", { url: log.url || log.message || "" }) : log.message || ""}</p>
                         </div>
                       </div>
                     );
