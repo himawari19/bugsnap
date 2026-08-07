@@ -142,7 +142,7 @@ const en: Dict = {
   "landing.terms": "Terms of Service",
   "landing.contact": "Contact",
   "landing.copyright": "© {year} BugSnap. All rights reserved.",
-  "landing.builtOn": "Built natively on top of Google Drive API & Supabase.",
+  "landing.builtOn": "Built natively on top of Google Drive.",
   // Dashboard
   "dash.welcome": "Welcome back, {name}",
   "dash.subtitle": "Here's what's happening with your captures.",
@@ -677,7 +677,7 @@ const id: Dict = {
   "landing.terms": "Ketentuan Layanan",
   "landing.contact": "Kontak",
   "landing.copyright": "© {year} BugSnap. Semua hak dilindungi.",
-  "landing.builtOn": "Dibangun di atas Google Drive API & Supabase.",
+  "landing.builtOn": "Dibangun secara native di atas Google Drive.",
   "dash.welcome": "Selamat datang kembali, {name}",
   "dash.subtitle": "Inilah yang terjadi dengan tangkapan Anda.",
   "dash.viewAll": "Lihat Semua Tangkapan",

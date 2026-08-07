@@ -7,10 +7,10 @@ export const metadata: Metadata = {
 };
 
 const services = [
-  { name: "Web Dashboard (App Router)", status: "Operational", badge: "bg-emerald-500" },
+  { name: "Web Dashboard", status: "Operational", badge: "bg-emerald-500" },
   { name: "Core Database & API", status: "Operational", badge: "bg-emerald-500" },
   { name: "Google Drive OAuth Integration", status: "Operational", badge: "bg-emerald-500" },
-  { name: "AI Summary Service (OpenRouter)", status: "Operational", badge: "bg-emerald-500" },
+  { name: "AI Summary Service", status: "Operational", badge: "bg-emerald-500" },
   { name: "Slack & Discord Webhook Delivery", status: "Operational", badge: "bg-emerald-500" },
   { name: "Chrome Extension Bridge", status: "Operational", badge: "bg-emerald-500" },
 ];

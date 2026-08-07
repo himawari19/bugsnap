@@ -53,7 +53,7 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-2.5">
                   <span className="text-emerald-500 font-bold">✓</span>
-                  <span>Web Dashboard &amp; public share pages (`/c/[id]`)</span>
+                  <span>Web Dashboard &amp; public share links</span>
                 </li>
                 <li className="flex items-start gap-2.5">
                   <span className="text-emerald-500 font-bold">✓</span>
@@ -65,7 +65,7 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-start gap-2.5">
                   <span className="text-emerald-500 font-bold">✓</span>
-                  <span>AI Bug Summaries (if OpenRouter key provided)</span>
+                  <span>AI Bug Summaries (automatically generated)</span>
                 </li>
               </ul>
             </div>
