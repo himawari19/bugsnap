@@ -45,8 +45,8 @@ Extension (capture → Drive upload)
 
 ## Domain & DNS (SINGLE SOURCE OF TRUTH)
 
-- **THE ONLY allowed production domain for BugSnap is `bugsnap.akusaraproject.my.id`** — no other subdomain (no `dashboard.*`, no `app.*`, no `www.*`) may be attached to the Vercel project or the Cloudflare zone for this app.
-- Never create/keep `dashboard.akusaraproject.my.id` DNS records or Vercel aliases — they were removed on 2026-08-08 and must stay removed.
+- **THE ONLY domain that may SERVE the BugSnap app is `bugsnap.akusaraproject.my.id`** — no other subdomain (no `app.*`, no `www.*`) may serve the app.
+- **`dashboard.akusaraproject.my.id` is allowed ONLY as a 301 redirect alias** → `bugsnap.akusaraproject.my.id` (user-approved 2026-08-08 to keep old shared links working). It must NEVER serve the app directly — only redirect, preserving path + query (`/c/<id>` share links keep working).
 - Vercel project: `bugsnap` (`prj_07vmHWiKLnvJ3EacILxkznfkMIxt`) — production deploy = `vercel deploy --prod`.
 - Cloudflare DNS: `CNAME bugsnap.akusaraproject.my.id → cname.vercel-dns.com` (proxied=false).
 - Vercel CLI auth token lives at `%APPDATA%\xdg.data\com.vercel.cli\auth.json` (NOT `~/.vercel/auth.json`).
