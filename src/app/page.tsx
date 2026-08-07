@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function Home() {
+  const router = useRouter();
   const [signingIn, setSigningIn] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -12,10 +14,15 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setIsLoggedIn(!!data.session?.user);
+      const loggedIn = !!data.session?.user;
+      setIsLoggedIn(loggedIn);
       setLoadingSession(false);
+      // Auto-open the dashboard once a session exists so returning users
+      // (extension popup, bookmark, manual nav) land straight in — not on
+      // the marketing landing which looks like a "log in again" wall.
+      if (loggedIn) router.replace("/dashboard");
     });
-  }, []);
+  }, [router]);
 
   async function signInWithGoogle() {
     setSigningIn(true);
@@ -263,7 +270,7 @@ export default function Home() {
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <button
-                onClick={() => window.open("https://chrome.google.com/webstore", "_blank")}
+                onClick={() => window.open("https://github.com/himawari19/mazwayScreen", "_blank")}
                 className="inline-flex items-center gap-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
