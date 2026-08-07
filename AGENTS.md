@@ -43,6 +43,15 @@ Extension (capture → Drive upload)
 - The extension only has a Google Drive OAuth token + email. It inserts captures via the RPC `insert_capture_by_email` (SECURITY DEFINER), which resolves the user by email and links the capture to their workspace.
 - The dashboard user MUST sign in with the same Google email for captures to appear.
 
+## Domain & DNS (SINGLE SOURCE OF TRUTH)
+
+- **THE ONLY allowed production domain for BugSnap is `bugsnap.akusaraproject.my.id`** — no other subdomain (no `dashboard.*`, no `app.*`, no `www.*`) may be attached to the Vercel project or the Cloudflare zone for this app.
+- Never create/keep `dashboard.akusaraproject.my.id` DNS records or Vercel aliases — they were removed on 2026-08-08 and must stay removed.
+- Vercel project: `bugsnap` (`prj_07vmHWiKLnvJ3EacILxkznfkMIxt`) — production deploy = `vercel deploy --prod`.
+- Cloudflare DNS: `CNAME bugsnap.akusaraproject.my.id → cname.vercel-dns.com` (proxied=false).
+- Vercel CLI auth token lives at `%APPDATA%\xdg.data\com.vercel.cli\auth.json` (NOT `~/.vercel/auth.json`).
+- If a stray `dashboard.*` / `mazway*` domain appears on Vercel or Cloudflare, remove it from both (project domains API + DNS records) — no exceptions.
+
 ## Non-Negotiable Rules
 
 1. **NEVER commit secrets**: `.env.local`, Supabase anon/service keys, Google client secrets, `sbp_*` PATs. All are gitignored.
