@@ -1,5 +1,5 @@
 -- ====================================================================
--- MAZWAY DASHBOARD — SECURITY FIX: password / expiry gate for public
+-- BugSnap — SECURITY FIX: password / expiry gate for public
 -- share links (/c/:id).
 --
 -- HOW TO APPLY

@@ -74,7 +74,7 @@ function SingleViewContent() {
   const [embedModal, setEmbedModal] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
   const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
-  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "BugSnap_only">("drive_trash");
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
   const [deletingCapture, setDeletingCapture] = useState(false);
   const [deleteCaptureError, setDeleteCaptureError] = useState<string | null>(null);
   const [driveNotConnected, setDriveNotConnected] = useState(false);
@@ -913,7 +913,7 @@ function SingleViewContent() {
                 <span><span className="block text-xs font-semibold text-foreground">{t("v.moveToTrash")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.trashHint")}</span></span>
               </label>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
-                <input type="radio" name="delete-mode" value="BugSnap_only" checked={deleteMode === "BugSnap_only"} onChange={() => { setDeleteMode("BugSnap_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
+                <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
                 <span><span className="block text-xs font-semibold text-foreground">{t("v.BugSnapOnly")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.BugSnapOnlyHint")}</span></span>
               </label>
             </fieldset>

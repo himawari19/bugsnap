@@ -1,5 +1,5 @@
 /**
- * mazway RPC test suite — runs against the LIVE Supabase project with the
+ * BugSnap RPC test suite — runs against the LIVE Supabase project with the
  * anon key (same as the production extension). Verifies every RPC the app
  * depends on, plus RLS isolation. All created rows are cleaned up after.
  *

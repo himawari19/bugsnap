@@ -4,7 +4,7 @@
 -- HOW TO APPLY:
 --   Paste in Supabase SQL Editor and Run. Re-runnable (idempotent).
 --
--- The mazwayScreen extension (see mazwayScreen/schema.sql) already
+-- The BugSnap extension (see bugsnap-extension schema) already
 -- expects a `workspace_id` column on captures. Rows created before this
 -- migration have none, so we add it as NULLABLE (`on delete set null` —
 -- never force NOT NULL on existing rows) and backfill opportunistically.
