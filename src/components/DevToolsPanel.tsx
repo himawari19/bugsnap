@@ -249,7 +249,7 @@ export default function DevToolsPanel({ capture }: Props) {
   }
 
   function copyToMarkdown() {
-    let md = `## 🐞 Mazway Bug Report: ${createdAt}\n\n`;
+    let md = `## 🐞 BugSnap Bug Report: ${createdAt}\n\n`;
     
     md += `### 💻 System Info\n`;
     md += `| Field | Value |\n`;

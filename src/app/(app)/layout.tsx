@@ -80,7 +80,7 @@ export default function DashboardLayout({
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifLastSeen, setNotifLastSeen] = useState<number>(() => {
     try {
-      return Number(localStorage.getItem("mazway_notif_last_seen") || 0);
+      return Number(localStorage.getItem("BugSnap_notif_last_seen") || 0);
     } catch {
       return 0;
     }
@@ -120,7 +120,7 @@ export default function DashboardLayout({
     setNewCommentCount(0);
     setNotifOpen(false);
     try {
-      localStorage.setItem("mazway_notif_last_seen", String(now));
+      localStorage.setItem("BugSnap_notif_last_seen", String(now));
     } catch { /* ignore */ }
   };
 
@@ -309,7 +309,7 @@ export default function DashboardLayout({
           const promoStr = json.promo.message;
           setPromoBanner(json.promo);
           // Check if user dismissed this exact message
-          if (localStorage.getItem("mazway_promo_dismissed") === promoStr) {
+          if (localStorage.getItem("BugSnap_promo_dismissed") === promoStr) {
             setPromoDismissed(true);
           }
         }
@@ -659,7 +659,7 @@ export default function DashboardLayout({
             type="button"
             aria-label={t("layout.dismissPromo")}
             onClick={() => {
-              try { localStorage.setItem("mazway_promo_dismissed", promoBanner.message); } catch {}
+              try { localStorage.setItem("BugSnap_promo_dismissed", promoBanner.message); } catch {}
               setPromoDismissed(true);
             }}
             className="shrink-0 text-white/80 hover:text-white transition-colors"
@@ -672,7 +672,7 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-60 border-r border-border bg-white shrink-0 flex flex-col h-full overflow-visible">
         <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
-          <svg viewBox="0 0 128 128" className="w-7 h-7 shrink-0" role="img" aria-label="Mazway">
+          <svg viewBox="0 0 128 128" className="w-7 h-7 shrink-0" role="img" aria-label="BugSnap">
             <rect x="8" y="8" width="112" height="112" rx="27" fill="url(#sidebar-lg)" />
             <defs>
               <linearGradient id="sidebar-lg" x1="14" y1="12" x2="114" y2="118" gradientUnits="userSpaceOnUse">
@@ -688,7 +688,7 @@ export default function DashboardLayout({
           </svg>
           <div>
             <h1 className="text-sm font-bold tracking-tight text-foreground leading-none">
-              Mazway
+              BugSnap
             </h1>
             <p className="text-[10px] text-muted mt-1 leading-none font-medium">{t("layout.screenRecorder")}</p>
           </div>

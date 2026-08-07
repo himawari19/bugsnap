@@ -109,7 +109,7 @@ export default function Comments({
     // visitor after being logged in).
     if (!authorName) {
       try {
-        setStoredAuthorName(localStorage.getItem("mazway_author_name"));
+        setStoredAuthorName(localStorage.getItem("BugSnap_author_name"));
       } catch {
         setStoredAuthorName(null);
       }
@@ -212,10 +212,10 @@ export default function Comments({
       // Use the rate-limited RPC so anonymous users can't spam comments.
       const visitorRef = (() => {
         try {
-          let ref = localStorage.getItem("mazway_visitor");
+          let ref = localStorage.getItem("BugSnap_visitor");
           if (!ref) {
             ref = Math.random().toString(36).slice(2, 10);
-            localStorage.setItem("mazway_visitor", ref);
+            localStorage.setItem("BugSnap_visitor", ref);
           }
           return ref;
         } catch {
@@ -262,10 +262,10 @@ export default function Comments({
       // Replies also go through the rate-limited RPC.
       const visitorRef = (() => {
         try {
-          let ref = localStorage.getItem("mazway_visitor");
+          let ref = localStorage.getItem("BugSnap_visitor");
           if (!ref) {
             ref = Math.random().toString(36).slice(2, 10);
-            localStorage.setItem("mazway_visitor", ref);
+            localStorage.setItem("BugSnap_visitor", ref);
           }
           return ref;
         } catch {

@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Guidelines & Project Rules
 
-> This file is the single source of truth for AI agents and developers working on the **Mazway** codebase.
+> This file is the single source of truth for AI agents and developers working on the **BugSnap** codebase.
 
 ## System & Tool Rules (CRITICAL)
 
@@ -10,10 +10,10 @@
 
 ## Project Overview
 
-Mazway is a screen-recorder + bug-reporting SaaS (like Jam.dev / Loom):
+BugSnap is a screen-recorder + bug-reporting SaaS (like Jam.dev / Loom):
 
-- **`mazwayScreen/`** — Chrome MV3 extension. Captures screenshots/recordings, annotates in a canvas editor, uploads to Google Drive, and registers metadata in Supabase.
-- **`mazway-dashboard/`** — Next.js 14 (App Router) web app. Login via Google OAuth (Supabase), analytics dashboard, captures library, public share pages, comments, AI bug reports, workspace/team management.
+- **`bugsnap-extension/`** — Chrome MV3 extension. Captures screenshots/recordings, annotates in a canvas editor, uploads to Google Drive, and registers metadata in Supabase.
+- **`bugsnap/`** — Next.js 14 (App Router) web app. Login via Google OAuth (Supabase), analytics dashboard, captures library, public share pages, comments, AI bug reports, workspace/team management.
 
 ## Architecture & Data Flow
 
@@ -90,7 +90,7 @@ Extension (capture → Drive upload)
 
 ## Env Vars
 
-### Dashboard (`mazway-dashboard/.env.local`)
+### Dashboard (`bugsnap/.env.local`)
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
@@ -106,12 +106,12 @@ NEXT_PUBLIC_APP_URL=...   # canonical app URL, used for share links + email link
 SUPER_ADMIN_EMAILS=...    # comma-separated list of emails allowed to view /admin dashboard
 ```
 
-### Extension (`mazwayScreen/editor.js` top `CONFIG`)
+### Extension (`bugsnap-extension/editor.js` top `CONFIG`)
 ```js
 const CONFIG = {
   supabaseUrl: 'https://<ref>.supabase.co',
   supabaseAnonKey: 'eyJ...',
-  prodUrl: 'https://mazway-dashboard.vercel.app', // ← change when deploying to custom domain
+  prodUrl: 'https://bugsnap.vercel.app', // ← change when deploying to custom domain
   localUrl: 'http://localhost:3000',
 };
 ```
@@ -119,7 +119,7 @@ const CONFIG = {
 
 ## Testing
 
-- Dashboard: `npm run build` in `mazway-dashboard` MUST pass clean (eslint + types) before any change is considered done.
+- Dashboard: `npm run build` in `bugsnap` MUST pass clean (eslint + types) before any change is considered done.
 - Extension: `node --check editor.js` (syntax only). Manual test in Chrome via `chrome://extensions` → Reload.
 - SQL changes: apply via Supabase SQL Editor or Management API (PAT `sbp_*`), then verify with `pg_policies`/`pg_proc` queries.
 - Never assume the DB matches the repo SQL files — always verify against live DB first (tables/functions/policies).

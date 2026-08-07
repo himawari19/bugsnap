@@ -388,7 +388,7 @@ function CapturesContent() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Capture | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; title?: string; operationId: string } | null>(null);
-  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "BugSnap_only">("drive_trash");
   const [deleting, setDeleting] = useState(false);
   const [driveNotConnected, setDriveNotConnected] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -707,7 +707,7 @@ function CapturesContent() {
               </button>
               <Link
                 href="/"
-                title="Open the mazwayScreen extension to start a capture"
+                title="Open the BugSnap extension to start a capture"
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-400 text-white text-sm font-medium rounded-lg hover:bg-emerald-500 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -900,7 +900,7 @@ function CapturesContent() {
           </div>
           {!search.trim() && !showVideo && !showScreenshot && (
             <button
-              onClick={() => window.open("https://github.com/himawari19/mazwayScreen", "_blank")}
+              onClick={() => window.open("https://github.com/himawari19/BugSnap", "_blank")}
               className="mt-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
               {t("cap.install")}
@@ -1166,10 +1166,10 @@ function CapturesContent() {
                   <span><span className="block text-sm font-semibold text-foreground">{t("cap.moveToTrash")}</span><span className="block text-xs text-muted mt-0.5">{t("cap.trashHint")}</span></span>
                 </span>
               </label>
-              <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "mazway_only" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
+              <label className={`block rounded-lg border p-3 cursor-pointer ${deleteMode === "BugSnap_only" ? "border-indigo-500 bg-indigo-50/50" : "border-border"}`}>
                 <span className="flex gap-3">
-                  <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); setDriveNotConnected(false); setDeleteError(null); }} disabled={deleting} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-foreground">{t("cap.mazwayOnly")}</span><span className="block text-xs text-muted mt-0.5">{t("cap.mazwayOnlyHint")}</span></span>
+                  <input type="radio" name="delete-mode" value="BugSnap_only" checked={deleteMode === "BugSnap_only"} onChange={() => { setDeleteMode("BugSnap_only"); setDeleteRequest((request) => request ? { ...request, operationId: crypto.randomUUID() } : request); setDriveNotConnected(false); setDeleteError(null); }} disabled={deleting} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-foreground">{t("cap.BugSnapOnly")}</span><span className="block text-xs text-muted mt-0.5">{t("cap.BugSnapOnlyHint")}</span></span>
                 </span>
               </label>
             </div>
@@ -1178,7 +1178,7 @@ function CapturesContent() {
             {driveNotConnected && (
               <div className="mt-3 flex items-center gap-3">
                 <Link href="/settings" className="text-sm font-semibold text-indigo-600 hover:underline">{t("cap.connectDrive")}</Link>
-                <button onClick={() => { setDeleteMode("mazway_only"); setDriveNotConnected(false); setDeleteError(null); }} className="text-sm font-medium text-foreground hover:underline">{t("cap.useMazwayOnly")}</button>
+                <button onClick={() => { setDeleteMode("BugSnap_only"); setDriveNotConnected(false); setDeleteError(null); }} className="text-sm font-medium text-foreground hover:underline">{t("cap.useBugSnapOnly")}</button>
               </div>
             )}
 

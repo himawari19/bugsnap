@@ -179,7 +179,7 @@ begin
 
   select id into v_user_id from auth.users where lower(email) = lower(p_email);
   if v_user_id is null then
-    raise exception 'No user found with that email. Ask them to sign up to Mazway first.';
+    raise exception 'No user found with that email. Ask them to sign up to BugSnap first.';
   end if;
 
   if exists (

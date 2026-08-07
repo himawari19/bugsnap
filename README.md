@@ -1,6 +1,6 @@
-# Mazway Dashboard
+# BugSnap
 
-Web dashboard untuk **mazwayScreen** — platform screen recording & bug reporting ala Jam.dev/Loom.
+Web dashboard untuk **BugSnap** — platform screen recording & bug reporting ala Jam.dev/Loom.
 
 - **Stack**: Next.js 14 (App Router) + Tailwind CSS + Supabase (PostgreSQL + Auth)
 - **Storage**: Google Drive (milik user) — biaya Rp 0 untuk file
@@ -41,7 +41,7 @@ Web dashboard untuk **mazwayScreen** — platform screen recording & bug reporti
 ## Menjalankan Lokal
 
 ```bash
-cd mazway-dashboard
+cd bugsnap
 npm install
 npm run dev
 ```
@@ -67,11 +67,11 @@ CRON_SECRET=...          # Bearer token /api/weekly-digest
 
 1. Import repo di [vercel.com](https://vercel.com)
 2. Set env vars di project settings
-3. Deploy. URL default: `https://<project>.vercel.app`
+3. Deploy. URL default: `https://bugsnap.vercel.app`
 
-Setelah deploy, **wajib update `prodUrl`** di `mazwayScreen/editor.js`:
+Setelah deploy, **wajib update `prodUrl`** di `BugSnap/editor.js`:
 ```js
-prodUrl: 'https://<project>.vercel.app'
+prodUrl: 'https://bugsnap.vercel.app'
 ```
 
 ### Cron (opsional, weekly digest)

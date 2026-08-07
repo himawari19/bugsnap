@@ -4,7 +4,7 @@ import { compensatedDeleteError, decideDeleteReconciliation, isUuid, parseDriveF
 import { createServiceClient } from "@/lib/supabase-server";
 export const runtime = "nodejs";
 
-type Mode = "drive_trash" | "mazway_only";
+type Mode = "drive_trash" | "BugSnap_only";
 type Capture = { id: string; workspace_id: string | null; drive_file_id: string | null; drive_url: string | null };
 type Result = { captureId: string; ok: boolean; outcome: string; error?: string };
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const ids = Array.isArray(input?.captureIds) ? Array.from(new Set(input.captureIds)) : [];
   const mode = input?.mode as Mode;
   const operationId = input?.operationId;
-  if (!ids.length || ids.length > 100 || ids.some(id => typeof id !== "string" || !isUuid(id)) || !["drive_trash", "mazway_only"].includes(mode) || typeof operationId !== "string" || !isUuid(operationId)) {
+  if (!ids.length || ids.length > 100 || ids.some(id => typeof id !== "string" || !isUuid(id)) || !["drive_trash", "BugSnap_only"].includes(mode) || typeof operationId !== "string" || !isUuid(operationId)) {
     return NextResponse.json({ error: "Provide 1-100 capture UUIDs, a valid mode, and a UUID operationId" }, { status: 400 });
   }
 

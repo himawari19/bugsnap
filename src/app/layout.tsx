@@ -4,9 +4,9 @@ import { I18nProvider } from "@/components/I18nProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id"),
-  title: "Mazway — Bug reporting made instant",
+  title: "BugSnap - From Click to Fix",
   description:
-    "Capture your screen, attach DevTools context, and share a link your team can open in one click.",
+    "From Click to Fix. by akusaradigital.com",
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
@@ -15,14 +15,14 @@ export const metadata: Metadata = {
     apple: "/apple-icon.png",
   },
   openGraph: {
-    title: "Mazway — Bug reporting made instant",
-    description: "Capture bugs with screenshots, recordings, and automatic DevTools context.",
-    images: [{ url: "/opengraph-image.png", width: 128, height: 128, alt: "Mazway" }],
+    title: "BugSnap - From Click to Fix",
+    description: "From Click to Fix. by akusaradigital.com",
+    images: [{ url: "/opengraph-image.png", width: 128, height: 128, alt: "BugSnap" }],
   },
   twitter: {
     card: "summary",
-    title: "Mazway — Bug reporting made instant",
-    description: "Capture bugs with screenshots, recordings, and automatic DevTools context.",
+    title: "BugSnap - From Click to Fix",
+    description: "From Click to Fix. by akusaradigital.com",
     images: ["/twitter-image.png"],
   },
 };

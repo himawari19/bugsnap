@@ -74,7 +74,7 @@ function SingleViewContent() {
   const [embedModal, setEmbedModal] = useState(false);
   const [embedCopied, setEmbedCopied] = useState(false);
   const [deleteCaptureModalOpen, setDeleteCaptureModalOpen] = useState(false);
-  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "mazway_only">("drive_trash");
+  const [deleteMode, setDeleteMode] = useState<"drive_trash" | "BugSnap_only">("drive_trash");
   const [deletingCapture, setDeletingCapture] = useState(false);
   const [deleteCaptureError, setDeleteCaptureError] = useState<string | null>(null);
   const [driveNotConnected, setDriveNotConnected] = useState(false);
@@ -95,16 +95,16 @@ function SingleViewContent() {
 
   const [viewerEmail, setViewerEmail] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [brand, setBrand] = useState({ name: "mazway", logo: "", hideWatermark: false });
+  const [brand, setBrand] = useState({ name: "BugSnap", logo: "", hideWatermark: false });
 
   // 1. Initial Access Check (Non-Login default)
   useEffect(() => {
     try {
-      const savedData = localStorage.getItem("mazway_settings");
+      const savedData = localStorage.getItem("BugSnap_settings");
       if (savedData) {
         const parsed = JSON.parse(savedData);
         setBrand({
-          name: parsed.brandName || "mazway",
+          name: parsed.brandName || "BugSnap",
           logo: parsed.logoUrl || "",
           hideWatermark: !!parsed.hideWatermark,
         });
@@ -621,7 +621,7 @@ function SingleViewContent() {
               </svg>
               <h1 className="text-lg font-semibold text-foreground">{t("v.notFoundTitle")}</h1>
               <p className="text-sm text-muted mt-1 mb-4">{t("v.notFoundHint")}</p>
-              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToMazway")}</Link>
+              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToBugSnap")}</Link>
             </div>
           )}
 
@@ -632,7 +632,7 @@ function SingleViewContent() {
               </svg>
               <h1 className="text-lg font-semibold text-foreground">{t("v.expiredTitle")}</h1>
               <p className="text-sm text-muted mt-1 mb-4">{t("v.expiredHint")}</p>
-              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToMazway")}</Link>
+              <Link href="/" className="text-sm text-indigo-600 font-medium hover:underline">{t("v.loginToBugSnap")}</Link>
             </div>
           )}
 
@@ -913,8 +913,8 @@ function SingleViewContent() {
                 <span><span className="block text-xs font-semibold text-foreground">{t("v.moveToTrash")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.trashHint")}</span></span>
               </label>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
-                <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
-                <span><span className="block text-xs font-semibold text-foreground">{t("v.mazwayOnly")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.mazwayOnlyHint")}</span></span>
+                <input type="radio" name="delete-mode" value="BugSnap_only" checked={deleteMode === "BugSnap_only"} onChange={() => { setDeleteMode("BugSnap_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
+                <span><span className="block text-xs font-semibold text-foreground">{t("v.BugSnapOnly")}</span><span className="block text-[11px] text-muted mt-0.5">{t("v.BugSnapOnlyHint")}</span></span>
               </label>
             </fieldset>
             {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">{t("v.driveNotConnected")}</p>}

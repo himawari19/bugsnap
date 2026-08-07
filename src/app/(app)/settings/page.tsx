@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const { t } = useT();
   const router = useRouter();
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [brandName, setBrandName] = useState("mazway");
+  const [brandName, setBrandName] = useState("BugSnap");
   const [logoUrl, setLogoUrl] = useState("");
   const [hideWatermark, setHideWatermark] = useState(false);
   const [customDomain, setCustomDomain] = useState("");
@@ -76,7 +76,7 @@ export default function SettingsPage() {
           .then(({ data: row }) => {
             if (!row) return; // fall back to default state
             setWebhookUrl(row.webhook_url || "");
-            setBrandName(row.brand_name || "mazway");
+            setBrandName(row.brand_name || "BugSnap");
             setLogoUrl(row.custom_logo_url || "");
             setHideWatermark(!!row.hide_watermark);
             setCustomDomain(row.custom_domain || "");
@@ -154,7 +154,7 @@ export default function SettingsPage() {
       const { error } = await supabase.from("workspace_settings").upsert({
         workspace_id: activeWsId,
         webhook_url: webhookUrl.trim(),
-        brand_name: brandName.trim() || "mazway",
+        brand_name: brandName.trim() || "BugSnap",
         custom_logo_url: logoUrl.trim(),
         hide_watermark: hideWatermark,
         custom_domain: customDomain.trim(),

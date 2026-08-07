@@ -66,10 +66,10 @@ export async function GET(req: Request) {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || "Mazway Dashboard <no-reply@mail.akusaraproject.my.id>",
+          from: process.env.RESEND_FROM_EMAIL || "BugSnap <no-reply@bugsnap.akusaraproject.my.id>",
           to: [digest.email],
-          subject: `Mazway Weekly Digest — ${digest.workspace}`,
-          html: `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:8px;"><img src="${appUrl}/icon.png" width="40" height="40" alt="Mazway Dashboard" style="display:block;margin-bottom:20px;" /><h2 style="font-size:20px;font-weight:600;color:#0f172a;margin-top:0;">Mazway Weekly Digest</h2><p style="color:#475569;font-size:15px;line-height:24px;"><strong>${digest.workspace}</strong> activity over the last 7 days.</p><blockquote style="margin:16px 0;padding:12px 16px;border-left:4px solid #3b82f6;background-color:#f8fafc;color:#1e293b;font-size:15px;border-radius:0 4px 4px 0;">${digest.captures} captures · ${digest.videos} videos · ${digest.comments} comments · ${digest.views} views</blockquote><hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0;" /><p style="color:#94a3b8;font-size:12px;margin-bottom:0;">This is an automated weekly digest from Mazway.</p></div>`,
+          subject: `BugSnap Weekly Digest — ${digest.workspace}`,
+          html: `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:8px;"><img src="${appUrl}/icon.png" width="40" height="40" alt="BugSnap" style="display:block;margin-bottom:20px;" /><h2 style="font-size:20px;font-weight:600;color:#0f172a;margin-top:0;">BugSnap Weekly Digest</h2><p style="color:#475569;font-size:15px;line-height:24px;"><strong>${digest.workspace}</strong> activity over the last 7 days.</p><blockquote style="margin:16px 0;padding:12px 16px;border-left:4px solid #3b82f6;background-color:#f8fafc;color:#1e293b;font-size:15px;border-radius:0 4px 4px 0;">${digest.captures} captures · ${digest.videos} videos · ${digest.comments} comments · ${digest.views} views</blockquote><hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0;" /><p style="color:#94a3b8;font-size:12px;margin-bottom:0;">This is an automated weekly digest from BugSnap.</p></div>`,
         }),
       });
       if (!response.ok) throw new Error(`Resend failed (${response.status})`);

@@ -1,5 +1,5 @@
 /**
- * Test config — shared Supabase client + helpers for the mazway test suite.
+ * Test config — shared Supabase client + helpers for the BugSnap test suite.
  * Uses the SAME anon key as the production extension so tests reflect real
  * runtime behavior. Run with: node --test tests/
  */
@@ -80,7 +80,7 @@ export async function insertTestCapture(overrides = {}) {
 
 /** Generate a unique test email (never used in production). */
 export function randomEmail(prefix = "test") {
-  return `${prefix}.${Date.now()}@mazway.test`;
+  return `${prefix}.${Date.now()}@bugsnap.test`;
 }
 
 // ---------------------------------------------------------------------------

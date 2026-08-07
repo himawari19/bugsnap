@@ -86,7 +86,7 @@ create table if not exists public.workspace_folders (
 );
 create table if not exists public.workspace_settings (
   workspace_id uuid primary key references public.workspaces(id) on delete cascade,
-  webhook_url text not null default '', brand_name text not null default 'mazway',
+  webhook_url text not null default '', brand_name text not null default 'BugSnap',
   custom_logo_url text not null default '', hide_watermark boolean not null default false,
   custom_domain text not null default '', updated_at timestamptz not null default now()
 );

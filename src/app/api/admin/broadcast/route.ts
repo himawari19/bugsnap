@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, sentCount: 0 });
     }
 
-    const mailFrom = process.env.RESEND_FROM_EMAIL || "Mazway Dashboard <no-reply@mail.akusaraproject.my.id>";
+    const mailFrom = process.env.RESEND_FROM_EMAIL || "BugSnap <no-reply@bugsnap.akusaraproject.my.id>";
 
     // Resend Batch API allows up to 100 emails per request, but we will send individually
     // for safety on free tier (max 2 emails/sec is standard, but since it's tiny we can Promise.all with small chunks).
