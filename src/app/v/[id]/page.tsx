@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -44,7 +44,7 @@ function getExpiryCountdown(expiresAt: string): string {
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
-export default function SingleViewPage() {
+function SingleViewContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -898,5 +898,13 @@ export default function SingleViewPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SingleViewPage() {
+  return (
+    <Suspense fallback={<div className="h-screen bg-white" />}>
+      <SingleViewContent />
+    </Suspense>
   );
 }

@@ -94,11 +94,14 @@ Extension (capture → Drive upload)
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...      # server-only, bypasses RLS (comment notification route)
 # Optional:
-OPENAI_API_KEY=...        # enables real AI bug reports
-RESEND_API_KEY=...        # enables weekly digest emails
-RESEND_FROM_EMAIL=...     # sender for digest
+OPENROUTER_API_KEY=...    # enables real AI bug reports via OpenRouter (deepseek/deepseek-chat:free) — preferred
+OPENAI_API_KEY=...        # fallback AI provider (gpt-4o-mini) if OPENROUTER_API_KEY is not set
+RESEND_API_KEY=...        # enables weekly digest + comment/mention emails
+RESEND_FROM_EMAIL=...     # sender for all outgoing emails
 CRON_SECRET=...           # guards /api/weekly-digest
+NEXT_PUBLIC_APP_URL=...   # canonical app URL, used for share links + email links
 ```
 
 ### Extension (`mazwayScreen/editor.js` top `CONFIG`)

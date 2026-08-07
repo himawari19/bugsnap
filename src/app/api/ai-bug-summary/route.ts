@@ -41,18 +41,25 @@ export async function POST(req: Request) {
     const networkErrors = logs.filter((l) => l.type === "network");
     const steps = logs.filter((l) => l.type === "step");
 
-    // ---- OpenAI-powered summary (when OPENAI_API_KEY is set) ----
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
+    // ---- AI-powered summary via OpenRouter (DeepSeek free), falls back to OpenAI key if that's all that's set ----
+    const openrouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
+    const usingOpenRouter = !!process.env.OPENROUTER_API_KEY;
+    if (openrouterKey) {
       try {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        const res = await fetch(
+          usingOpenRouter ? "https://openrouter.ai/api/v1/chat/completions" : "https://api.openai.com/v1/chat/completions",
+          {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${openaiKey}`,
+            Authorization: `Bearer ${openrouterKey}`,
+            ...(usingOpenRouter ? {
+              "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id",
+              "X-Title": "Mazway Dashboard",
+            } : {}),
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model: usingOpenRouter ? "deepseek/deepseek-chat:free" : "gpt-4o-mini",
             messages: [
               {
                 role: "system",
@@ -77,7 +84,7 @@ User actions: ${JSON.stringify(steps.slice(0, 30))}`,
           if (summary) return NextResponse.json({ summary });
         }
       } catch (err) {
-        console.warn("OpenAI call failed, falling back to local parser:", err);
+        console.warn("AI API call failed, falling back to local parser:", err);
       }
     }
 
