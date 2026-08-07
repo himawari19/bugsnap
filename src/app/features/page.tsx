@@ -20,7 +20,7 @@ export default function FeaturesPage() {
             <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">01. Screen & Tab Recording</span>
             <h2 className="text-2xl font-bold tracking-tight">Capture Screenshots &amp; Screen Recordings with Audio</h2>
             <p className="text-sm text-muted leading-relaxed">
-              Record your screen, a specific window, or a Chrome tab in crisp HD. Add voice narration or webcam overlay to explain complex reproduction steps effortlessly.
+              Record your screen, a specific window, or a Chrome tab in crisp HD. Add voice narration or webcam overlay to explain complex reproduction steps.
             </p>
             <ul className="space-y-1.5 text-xs text-muted pt-2">
               <li className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export default function FeaturesPage() {
                 ⚠ [Console Warn] Unhandled promise rejection: AuthTokenExpired
               </div>
               <div className="text-foreground text-[10px] font-sans text-muted">
-                + OS: Windows 11 · Browser: Chrome 140 · Window: 1920x1080
+                + OS: Windows 11 &middot; Browser: Chrome 140 &middot; Window: 1920x1080
               </div>
             </div>
           </div>

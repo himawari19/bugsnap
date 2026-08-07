@@ -20,7 +20,7 @@ export default function Home() {
       setIsLoggedIn(loggedIn);
       setLoadingSession(false);
       // Auto-open the dashboard once a session exists so returning users
-      // (extension popup, bookmark, manual nav) land straight in â€” not on
+      // (extension popup, bookmark, manual nav) land straight in - not on
       // the marketing landing which looks like a "log in again" wall.
       if (loggedIn) router.replace("/dashboard");
     });
@@ -163,7 +163,7 @@ export default function Home() {
                     <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.browser")}</span><span className="text-foreground font-medium">Chrome 140</span></div>
                     <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.windowSize")}</span><span className="text-foreground font-medium">1920x1080</span></div>
                     <div className="mt-3 rounded-md bg-red-50 border border-red-100 px-3 py-2 font-mono text-[11px] text-red-700">
-                      POST /api/v1/auth 500 Â· Failed to fetch
+                      POST /api/v1/auth 500 &middot; Failed to fetch
                     </div>
                     <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 font-mono text-[11px] text-amber-700">
                       [Vue warn] Property &quot;user&quot; was used before being defined
@@ -204,7 +204,7 @@ export default function Home() {
                       </div>
                       <div className="px-2.5 py-2">
                         <div className="text-[10px] font-medium text-foreground truncate">{m}</div>
-                        <div className="text-[9px] text-muted mt-0.5">Jul 31 Â· 1920x1080</div>
+                        <div className="text-[9px] text-muted mt-0.5">Jul 31 &middot; 1920x1080</div>
                       </div>
                     </div>
                   ))}
@@ -266,7 +266,7 @@ export default function Home() {
                 <img src="/icon.svg" alt="" aria-hidden="true" className="w-6 h-6 object-contain" />
                 <div className="flex flex-col gap-1">
                   <span className="text-sm font-semibold">BugSnap</span>
-                  <span className="text-[11px] text-muted">From Click to Fix. by <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">akusaradigital.com</a></span>
+                  <span className="text-[11px] text-muted">From Click to Fix &middot; by <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">akusaradigital.com</a></span>
                 </div>
               </div>
               <p className="text-xs text-muted max-w-xs leading-relaxed">

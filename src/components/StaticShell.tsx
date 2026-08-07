@@ -40,7 +40,7 @@ export function StaticShell({
 
       <footer className="border-t border-border bg-white py-6">
         <div className="mx-auto max-w-5xl px-6 text-center text-xs text-muted">
-          BugSnap — From Click to Fix · by{" "}
+          BugSnap — From Click to Fix &middot; by{" "}
           <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
             akusaradigital.com
           </a>

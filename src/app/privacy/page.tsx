@@ -130,7 +130,7 @@ export default function PrivacyPolicyPage() {
 
       <footer className="border-t border-border bg-white py-6">
         <div className="mx-auto max-w-4xl px-6 text-center text-xs text-muted">
-          BugSnap — From Click to Fix · by <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">akusaradigital.com</a>
+          BugSnap — From Click to Fix &middot; by <a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">akusaradigital.com</a>
         </div>
       </footer>
     </div>

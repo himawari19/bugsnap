@@ -21,7 +21,7 @@ export default function PricingPage() {
 
             <div className="p-8 text-center border-b border-border bg-subtle/30">
               <h3 className="text-xl font-bold text-foreground">Community Edition</h3>
-              <p className="text-sm text-muted mt-2">Everything you need for seamless bug reporting.</p>
+              <p className="text-sm text-muted mt-2">Everything you need for fast bug reporting.</p>
               <div className="my-6">
                 <span className="text-5xl font-extrabold text-foreground">$0</span>
                 <span className="text-muted text-sm font-medium"> / forever</span>
