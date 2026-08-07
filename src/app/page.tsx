@@ -243,13 +243,13 @@ export default function Home() {
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <button
-                onClick={() => window.open("https://github.com/himawari19/BugSnap", "_blank")}
+                onClick={() => window.location.assign("/features")}
                 className="inline-flex items-center gap-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                {t("landing.cta")}
+                Explore Features
               </button>
             </div>
           </div>
@@ -289,8 +289,8 @@ export default function Home() {
             <div className="space-y-3">
               <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.resources")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="https://github.com/himawari19/BugSnap#readme" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
-                <li><a href="https://github.com/himawari19/BugSnap/tree/main/bugsnap-extension" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
+                <li><a href="/help" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
+                <li><a href="https://chrome.google.com/webstore" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
                 <li><a href="/help" className="hover:text-foreground transition-colors">{t("landing.help")}</a></li>
                 <li><a href="/status" className="hover:text-foreground transition-colors">{t("landing.apiStatus")}</a></li>
               </ul>

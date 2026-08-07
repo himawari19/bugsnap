@@ -900,7 +900,7 @@ function CapturesContent() {
           </div>
           {!search.trim() && !showVideo && !showScreenshot && (
             <button
-              onClick={() => window.open("https://github.com/himawari19/BugSnap", "_blank")}
+              onClick={() => window.location.href="/features"}
               className="mt-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
               {t("cap.install")}

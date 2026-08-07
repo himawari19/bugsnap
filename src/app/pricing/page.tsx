@@ -27,7 +27,7 @@ export default function PricingPage() {
                 <span className="text-muted text-sm font-medium"> / forever</span>
               </div>
               <a
-                href="https://github.com/himawari19/BugSnap"
+                href="/contact"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors shadow-sm"
@@ -73,13 +73,13 @@ export default function PricingPage() {
         </div>
 
         <div className="mt-20 max-w-2xl mx-auto text-center space-y-4">
-          <h3 className="text-lg font-bold">Enterprise &amp; Self-Hosted</h3>
+          <h3 className="text-lg font-bold">Enterprise Custom</h3>
           <p className="text-sm text-muted">
-            BugSnap is fully open-source. Need a dedicated infrastructure, SSO, or strict SLA compliance? You can fork our repository and self-host the Supabase and Vercel dashboard infrastructure internally for your company.
+            Need dedicated infrastructure, SSO, or strict SLA compliance? We provide custom enterprise deployments tailored to your company security requirements.
           </p>
           <div className="pt-2">
-            <a href="https://github.com/himawari19/BugSnap" className="text-sm font-semibold text-indigo-600 hover:underline">
-              View GitHub Repository →
+            <a href="/contact" className="text-sm font-semibold text-indigo-600 hover:underline">
+              Contact Sales →
             </a>
           </div>
         </div>

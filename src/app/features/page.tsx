@@ -104,7 +104,7 @@ export default function FeaturesPage() {
             Install the BugSnap extension now and start capturing screen, audio, and dev logs in seconds.
           </p>
           <a
-            href="https://github.com/himawari19/BugSnap"
+            href="https://chrome.google.com/webstore"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm"

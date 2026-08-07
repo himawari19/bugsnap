@@ -71,7 +71,7 @@ export default function TermsPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-foreground">6. Third-Party Services</h2>
             <p>
-              The Service relies on third-party services: Google Drive, Google OAuth, Supabase, and Vercel. Your use of those services is subject to their respective terms and privacy policies. BugSnap is not responsible for the availability or behavior of those third-party services.
+              The Service relies on third-party services: Google Drive, Google OAuth, and our cloud infrastructure providers. Your use of those services is subject to their respective terms and privacy policies. BugSnap is not responsible for the availability or behavior of those third-party services.
             </p>
           </section>
 

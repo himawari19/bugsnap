@@ -15,7 +15,7 @@ const highlights = [
   {
     icon: "🧬",
     title: "Encryption in Transit",
-    desc: "All traffic is served over HTTPS / TLS 1.3. Google OAuth and Supabase sessions use short-lived JWTs with forced token rotation.",
+    desc: "All traffic is served over HTTPS / TLS 1.3. Authentication sessions use short-lived encrypted tokens with forced token rotation.",
   },
   {
     icon: "🚫",
@@ -30,12 +30,12 @@ const highlights = [
   {
     icon: "⚙️",
     title: "Minimal Metadata Storage",
-    desc: "Only capture title, duration, OS, browser, and dev-log summaries are stored in Supabase — needed to render your workspace dashboard.",
+    desc: "Only capture title, duration, OS, browser, and dev-log summaries are stored in our secure cloud database — needed to render your workspace dashboard.",
   },
   {
     icon: "🧾",
-    title: "Transparent Open Source",
-    desc: "The full extension and dashboard source code are public on GitHub for security review by the community.",
+    title: "Enterprise-Grade Compliance",
+    desc: "Our infrastructure is regularly audited and adheres to strict security standards to ensure your data remains protected.",
   },
 ];
 

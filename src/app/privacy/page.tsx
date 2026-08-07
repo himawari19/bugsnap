@@ -65,7 +65,7 @@ export default function PrivacyPolicyPage() {
                   <strong>Data:</strong> Capture title, duration, window dimensions, OS name, browser version, timestamp, and optional developer logs (console errors and failed network request details captured during active recording).
                 </p>
                 <p className="text-xs text-muted mt-1">
-                  <strong>Storage & Purpose:</strong> Stored securely in our Supabase database to allow rendering capture details, diagnostic context, and AI bug summaries in your workspace dashboard.
+                  <strong>Storage & Purpose:</strong> Stored securely in our cloud database to allow rendering capture details, diagnostic context, and AI bug summaries in your workspace dashboard.
                 </p>
               </div>
             </div>
@@ -92,8 +92,8 @@ export default function PrivacyPolicyPage() {
               <li><strong>Service Providers:</strong> We transmit data only to essential infrastructure providers:
                 <ul className="list-circle pl-5 mt-1 space-y-1 text-xs text-muted">
                   <li><strong>Google Drive API:</strong> For storing media files in your personal account under your control.</li>
-                  <li><strong>Supabase:</strong> For cloud database storage of capture metadata and authentication management.</li>
-                  <li><strong>Vercel:</strong> Host provider for the web dashboard application.</li>
+                  <li><strong>Cloud Database:</strong> For secure storage of capture metadata and authentication management.</li>
+                  <li><strong>Hosting Provider:</strong> Global edge network for serving the web dashboard application.</li>
                 </ul>
               </li>
             </ul>

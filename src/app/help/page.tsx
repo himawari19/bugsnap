@@ -68,8 +68,8 @@ export default function HelpPage() {
             <h3 className="text-sm font-bold text-foreground">Resources</h3>
             <ul className="space-y-2 text-xs">
               <li>
-                <a href="https://github.com/himawari19/BugSnap#readme" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
-                  Full Documentation ↗
+                <a href="/contact" className="text-indigo-600 hover:underline">
+                  Request Detailed Documentation
                 </a>
               </li>
               <li>

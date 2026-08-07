@@ -50,13 +50,10 @@ export default function ContactPage() {
             </div>
 
             <div className="border border-border rounded-xl p-5 bg-subtle/30 space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600">Open Source &amp; Code</h3>
-              <p className="text-sm font-semibold">GitHub Repository</p>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600">Enterprise &amp; Sales</h3>
+              <p className="text-sm font-semibold">Custom Deployment</p>
               <p className="text-xs text-muted leading-relaxed">
-                Found a bug or have a feature request? Open an issue on our GitHub repo:<br />
-                <a href="https://github.com/himawari19/BugSnap" target="_blank" rel="noopener noreferrer" className="underline text-indigo-600">
-                  github.com/himawari19/BugSnap
-                </a>
+                Need SLA guarantees, SSO, or custom integrations for your team? Contact our sales team to discuss enterprise options.
               </p>
             </div>
           </div>
@@ -74,7 +71,7 @@ export default function ContactPage() {
                 <span className="text-muted">The agreement between you and BugSnap regarding acceptable use and service limits.</span>
               </li>
               <li className="flex flex-col gap-0.5 border-t border-border pt-3">
-                <a href="https://github.com/himawari19/BugSnap#readme" target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-600 hover:underline">Documentation &amp; Extension Setup ↗</a>
+                <a href="/features" className="font-medium text-indigo-600 hover:underline">Documentation &amp; Extension Setup ↗</a>
                 <span className="text-muted">Guides on how to install, configure Google Drive OAuth, and use the annotation editor.</span>
               </li>
             </ul>
