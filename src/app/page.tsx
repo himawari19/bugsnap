@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -20,7 +20,7 @@ export default function Home() {
       setIsLoggedIn(loggedIn);
       setLoadingSession(false);
       // Auto-open the dashboard once a session exists so returning users
-      // (extension popup, bookmark, manual nav) land straight in — not on
+      // (extension popup, bookmark, manual nav) land straight in â€” not on
       // the marketing landing which looks like a "log in again" wall.
       if (loggedIn) router.replace("/dashboard");
     });
@@ -163,7 +163,7 @@ export default function Home() {
                     <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.browser")}</span><span className="text-foreground font-medium">Chrome 140</span></div>
                     <div className="flex text-xs"><span className="w-24 text-muted">{t("dt.windowSize")}</span><span className="text-foreground font-medium">1920x1080</span></div>
                     <div className="mt-3 rounded-md bg-red-50 border border-red-100 px-3 py-2 font-mono text-[11px] text-red-700">
-                      POST /api/v1/auth 500 · Failed to fetch
+                      POST /api/v1/auth 500 Â· Failed to fetch
                     </div>
                     <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2 font-mono text-[11px] text-amber-700">
                       [Vue warn] Property &quot;user&quot; was used before being defined
@@ -204,7 +204,7 @@ export default function Home() {
                       </div>
                       <div className="px-2.5 py-2">
                         <div className="text-[10px] font-medium text-foreground truncate">{m}</div>
-                        <div className="text-[9px] text-muted mt-0.5">Jul 31 · 1920x1080</div>
+                        <div className="text-[9px] text-muted mt-0.5">Jul 31 Â· 1920x1080</div>
                       </div>
                     </div>
                   ))}
@@ -289,8 +289,8 @@ export default function Home() {
             <div className="space-y-3">
               <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.resources")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
+                <li><a href="https://github.com/himawari19/BugSnap#readme" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.docs")}</a></li>
+                <li><a href="https://github.com/himawari19/BugSnap/tree/main/bugsnap-extension" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.chromeExt")}</a></li>
                 <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.help")}</a></li>
                 <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.apiStatus")}</a></li>
               </ul>
@@ -300,10 +300,10 @@ export default function Home() {
             <div className="space-y-3">
               <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">{t("landing.company")}</h5>
               <ul className="space-y-2 text-xs text-muted">
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.about")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.privacy")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.terms")}</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">{t("landing.contact")}</a></li>
+                <li><a href="https://akusaradigital.com" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("landing.about")}</a></li>
+                <li><a href="/privacy" className="hover:text-foreground transition-colors">{t("landing.privacy")}</a></li>
+                <li><a href="/terms" className="hover:text-foreground transition-colors">{t("landing.terms")}</a></li>
+                <li><a href="/contact" className="hover:text-foreground transition-colors">{t("landing.contact")}</a></li>
               </ul>
             </div>
           </div>
@@ -321,3 +321,4 @@ export default function Home() {
     </div>
   );
 }
+
