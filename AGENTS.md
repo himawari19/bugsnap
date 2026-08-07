@@ -123,3 +123,17 @@ const CONFIG = {
 - Extension: `node --check editor.js` (syntax only). Manual test in Chrome via `chrome://extensions` → Reload.
 - SQL changes: apply via Supabase SQL Editor or Management API (PAT `sbp_*`), then verify with `pg_policies`/`pg_proc` queries.
 - Never assume the DB matches the repo SQL files — always verify against live DB first (tables/functions/policies).
+
+## Next Development Ideas (pick 1, don't repeat past choices)
+
+> Pick any ONE of these as the next feature. Once picked, it's off the table — never propose the same idea twice.
+
+1. **Auto-Record Rules Engine** — extension auto-starts a recording when a configurable trigger fires (console error of a certain type, URL pattern match, network failure). Useful for reproducing intermittent bugs without a tester present. Touches: `content.js` (triggers), `background.js` (recording start), `options.html` (rules UI), Supabase `user_rules` table.
+
+2. **AI Auto-Triage** — after a capture is uploaded, AI classifies it (severity: critical/major/minor; category: layout/JS/runtime) and assigns it to a workspace member by role/skill. Touches: new `/api/ai-triage` route (reuse OpenRouter fallback), `captures.triage` JSONB column, dashboard badge + filter.
+
+3. **Capture Analytics Export** — workspace-level CSV/JSON export of captures (title, type, date, views, comments count, status) + a simple shareable "workspace stats" public page. Touches: `/api/export` route, `workspaces` stats view, settings button.
+
+4. **Dark Mode for Share Pages** — theme toggle on `/c/[id]` public page (and dashboard), persisted in localStorage, respects `prefers-color-scheme`. Touches: Tailwind `dark:` tokens, `I18nProvider`-style theme provider, share page shell.
+
+5. **Interactive Onboarding Tour** — 4-5 step guided walkthrough for first-time users (install extension → make first capture → share link → invite teammate), driven by a lightweight tour component + `onboarding_seen` flag on `users`. Touches: new `src/components/OnboardingTour.tsx`, `/dashboard` mount point, `users` column.
