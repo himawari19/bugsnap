@@ -164,7 +164,18 @@ export default function TeamManagementPage() {
           <h2 className="text-sm font-semibold text-foreground">Members ({members.length})</h2>
         </div>
         {loading ? (
-          <p className="p-6 text-sm text-muted">Loading members...</p>
+          <div className="divide-y divide-border/60 animate-pulse">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-9 h-9 rounded-full bg-subtle" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-1/3 bg-subtle rounded" />
+                  <div className="h-3 w-1/4 bg-subtle rounded" />
+                </div>
+                <div className="w-16 h-7 bg-subtle rounded-lg" />
+              </div>
+            ))}
+          </div>
         ) : members.length === 0 ? (
           <p className="p-6 text-sm text-muted">No members yet. Invite someone to get started.</p>
         ) : (

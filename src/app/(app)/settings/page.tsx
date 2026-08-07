@@ -216,9 +216,15 @@ export default function SettingsPage() {
               <h2 className="text-base font-semibold text-foreground">Webhooks & Notifications</h2>
               <p className="text-xs text-muted">Receive Slack, Discord, or custom webhook alerts when a new capture is saved.</p>
             </div>
-            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-              Active
-            </span>
+            {webhookUrl.trim() ? (
+              <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                Active
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-muted bg-subtle px-2 py-0.5 rounded-full border border-border">
+                Not Configured
+              </span>
+            )}
           </div>
 
           <div>

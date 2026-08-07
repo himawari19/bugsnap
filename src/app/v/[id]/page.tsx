@@ -86,6 +86,8 @@ function SingleViewContent() {
   const [editDesc, setEditDesc] = useState("");
   const [editTag, setEditTag] = useState("");
   const [editStatus, setEditStatus] = useState("");
+  const [editAllowedDomains, setEditAllowedDomains] = useState("");
+  const [editAllowedIps, setEditAllowedIps] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -327,6 +329,8 @@ function SingleViewContent() {
     setEditDesc(capture.description || "");
     setEditTag(capture.tag || "");
     setEditStatus(capture.status || "open");
+    setEditAllowedDomains((capture.allowed_domains || []).join(", "));
+    setEditAllowedIps((capture.allowed_ips || []).join(", "));
     setEditModalOpen(true);
   }
 
@@ -335,6 +339,9 @@ function SingleViewContent() {
     setSavingEdit(true);
     setEditError(null);
     try {
+      const parsedDomains = editAllowedDomains.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      const parsedIps = editAllowedIps.split(",").map((s) => s.trim()).filter(Boolean);
+
       const { data, error } = await supabase
         .from("captures")
         .update({
@@ -342,6 +349,8 @@ function SingleViewContent() {
           description: editDesc.trim() || null,
           tag: editTag || null,
           status: editStatus || null,
+          allowed_domains: parsedDomains.length > 0 ? parsedDomains : null,
+          allowed_ips: parsedIps.length > 0 ? parsedIps : null,
         })
         .eq("id", capture.id)
         .select()
@@ -404,7 +413,8 @@ function SingleViewContent() {
     }
   }
 
-  const embedCode = `<iframe src="${typeof window !== "undefined" ? window.location.href : ""}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
+  const embedUrl = typeof window !== "undefined" ? `${window.location.origin}/v/${id}?embed=true` : "";
+  const embedCode = `<iframe src="${embedUrl}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`;
 
   return (
     <div className="h-screen bg-white flex flex-col font-sans overflow-y-auto lg:overflow-hidden">
@@ -595,7 +605,12 @@ function SingleViewContent() {
 
       {status !== "ready" && (
         <div className="flex-1 flex flex-col items-center justify-center p-6">
-          {status === "loading" && <p className="text-sm text-muted">Loading capture...</p>}
+          {status === "loading" && (
+            <div className="w-full max-w-5xl flex flex-col gap-6 animate-pulse">
+              <div className="h-[clamp(16rem,40vh,28rem)] sm:h-[clamp(28rem,72vh,60rem)] bg-subtle rounded-2xl border border-border/70" />
+              <div className="h-40 bg-subtle rounded-xl border border-border/70" />
+            </div>
+          )}
 
           {status === "notfound" && (
             <div className="text-center max-w-sm">
@@ -750,6 +765,31 @@ function SingleViewContent() {
                   </select>
                 </div>
               </div>
+
+              <div className="pt-2 border-t border-border/60 space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Allowed Email Domains (Enterprise Security)</label>
+                  <input
+                    type="text"
+                    value={editAllowedDomains}
+                    onChange={(e) => setEditAllowedDomains(e.target.value)}
+                    placeholder="e.g. company.com, partner.com"
+                    className="w-full text-xs font-mono rounded-lg border border-border px-3 py-2 bg-white"
+                  />
+                  <p className="text-[10px] text-muted mt-1">Restricts access to viewers logged in with matching email domain.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Allowed IP Addresses</label>
+                  <input
+                    type="text"
+                    value={editAllowedIps}
+                    onChange={(e) => setEditAllowedIps(e.target.value)}
+                    placeholder="e.g. 180.252.1.2, 10.0.0.1"
+                    className="w-full text-xs font-mono rounded-lg border border-border px-3 py-2 bg-white"
+                  />
+                  <p className="text-[10px] text-muted mt-1">Restricts access to specific network IPs.</p>
+                </div>
+              </div>
               {editError && <p className="text-xs text-red-600">{editError}</p>}
             </div>
             <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border">
@@ -862,17 +902,17 @@ function SingleViewContent() {
             </div>
             <h2 className="text-lg font-bold text-foreground mb-2">Delete Capture?</h2>
             <p className="text-xs text-muted leading-relaxed mb-4">
-              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>? This cannot be undone.
+              Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{capture?.title}&quot;</span>?
             </p>
             <fieldset className="space-y-2 text-left mb-4" disabled={deletingCapture}>
               <legend className="text-xs font-semibold text-foreground mb-2">Delete from</legend>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
                 <input type="radio" name="delete-mode" value="drive_trash" checked={deleteMode === "drive_trash"} onChange={() => { setDeleteMode("drive_trash"); setDeleteOperationId(crypto.randomUUID()); }} className="mt-0.5" />
-                <span><span className="block text-xs font-semibold text-foreground">Google Drive trash + Mazway</span><span className="block text-[11px] text-muted mt-0.5">Moves the Drive file to trash and deletes the Mazway capture.</span></span>
+                <span><span className="block text-xs font-semibold text-foreground">Move to Drive trash + delete from Mazway</span><span className="block text-[11px] text-muted mt-0.5">Default. The Drive file can still be restored from trash.</span></span>
               </label>
               <label className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer">
                 <input type="radio" name="delete-mode" value="mazway_only" checked={deleteMode === "mazway_only"} onChange={() => { setDeleteMode("mazway_only"); setDeleteOperationId(crypto.randomUUID()); setDriveNotConnected(false); setDeleteCaptureError(null); }} className="mt-0.5" />
-                <span><span className="block text-xs font-semibold text-foreground">Mazway only</span><span className="block text-[11px] text-muted mt-0.5">Keeps the file in Google Drive.</span></span>
+                <span><span className="block text-xs font-semibold text-foreground">Delete from Mazway only</span><span className="block text-[11px] text-muted mt-0.5">Keeps the original file in Google Drive.</span></span>
               </label>
             </fieldset>
             {driveNotConnected && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">Google Drive is not connected. Reconnect Drive or choose Mazway only.</p>}
@@ -891,7 +931,7 @@ function SingleViewContent() {
                 disabled={deletingCapture}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
-                {deletingCapture ? "Deleting..." : "Delete Capture"}
+                {deletingCapture ? "Deleting..." : "Confirm delete"}
               </button>
             </div>
           </div>

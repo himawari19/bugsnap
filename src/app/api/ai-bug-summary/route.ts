@@ -41,54 +41,102 @@ export async function POST(req: Request) {
     const networkErrors = logs.filter((l) => l.type === "network");
     const steps = logs.filter((l) => l.type === "step");
 
-    // ---- AI-powered summary via OpenRouter (DeepSeek free), falls back to OpenAI key if that's all that's set ----
-    const openrouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
-    const usingOpenRouter = !!process.env.OPENROUTER_API_KEY;
-    if (openrouterKey) {
+    // ---- AI-powered summary via Multi-Model Waterfall Fallback ----
+    const promptPayload = {
+      messages: [
+        {
+          role: "system",
+          content: "You are a senior QA engineer. Write a concise bug report in Markdown with sections: Steps to Reproduce, Root Cause Analysis, and Suggested Fix. Use the raw dev logs provided. Be specific and technical.",
+        },
+        {
+          role: "user",
+          content: `Title: ${title || "Untitled"}\nWindow size: ${windowSize || "Unknown"}\nConsole errors: ${JSON.stringify(consoleErrors.slice(0, 20))}\nNetwork errors: ${JSON.stringify(networkErrors.slice(0, 20))}\nUser actions: ${JSON.stringify(steps.slice(0, 30))}`,
+        },
+      ],
+      max_tokens: 800,
+    };
+
+    const fetchAi = async (url: string, key: string, model: string, extraHeaders = {}) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 7000); // 7s timeout to prevent Vercel 10s hang
       try {
-        const res = await fetch(
-          usingOpenRouter ? "https://openrouter.ai/api/v1/chat/completions" : "https://api.openai.com/v1/chat/completions",
-          {
+        const res = await fetch(url, {
           method: "POST",
+          signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${openrouterKey}`,
-            ...(usingOpenRouter ? {
-              "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id",
-              "X-Title": "Mazway Dashboard",
-            } : {}),
+            Authorization: `Bearer ${key}`,
+            ...extraHeaders,
           },
-          body: JSON.stringify({
-            model: usingOpenRouter ? "deepseek/deepseek-chat:free" : "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a senior QA engineer. Write a concise bug report in Markdown with sections: Steps to Reproduce, Root Cause Analysis, and Suggested Fix. Use the raw dev logs provided. Be specific and technical.",
-              },
-              {
-                role: "user",
-                content: `Title: ${title || "Untitled"}
-Window size: ${windowSize || "Unknown"}
-Console errors: ${JSON.stringify(consoleErrors.slice(0, 20))}
-Network errors: ${JSON.stringify(networkErrors.slice(0, 20))}
-User actions: ${JSON.stringify(steps.slice(0, 30))}`,
-              },
-            ],
-            max_tokens: 800,
-          }),
+          body: JSON.stringify({ model, ...promptPayload }),
         });
         if (res.ok) {
           const json = await res.json();
-          const summary = json.choices?.[0]?.message?.content;
-          if (summary) return NextResponse.json({ summary });
+          return json.choices?.[0]?.message?.content;
         }
       } catch (err) {
-        console.warn("AI API call failed, falling back to local parser:", err);
+        console.warn(`[AI] Request failed for model ${model}:`, err instanceof Error ? err.message : String(err));
+      } finally {
+        clearTimeout(id);
+      }
+      return null;
+    };
+
+    const providers = [];
+    const openrouterHeaders = {
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://dashboard.akusaraproject.my.id",
+      "X-Title": "Mazway Dashboard",
+    };
+
+    // 1. 9Router Custom
+    if (process.env.CUSTOM_ROUTER_API_KEY) {
+      providers.push({
+        url: process.env.CUSTOM_ROUTER_URL || "https://router.akusaraproject.my.id/v1/chat/completions",
+        key: process.env.CUSTOM_ROUTER_API_KEY,
+        model: "free",
+        headers: openrouterHeaders,
+      });
+    }
+
+    // 2. OpenRouter Fast Free Models
+    if (process.env.OPENROUTER_API_KEY) {
+      const orModels = [
+        "cohere/north-mini-code:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "openai/gpt-oss-20b:free",
+      ];
+      for (const model of orModels) {
+        providers.push({
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          key: process.env.OPENROUTER_API_KEY,
+          model,
+          headers: openrouterHeaders,
+        });
       }
     }
 
-    // ---- Local smart summary logic (fallback, no API key needed) ----
+    // 3. OpenAI Official
+    if (process.env.OPENAI_API_KEY) {
+      providers.push({
+        url: "https://api.openai.com/v1/chat/completions",
+        key: process.env.OPENAI_API_KEY,
+        model: "gpt-4o-mini",
+        headers: {},
+      });
+    }
+
+    // Execute Waterfall
+    let aiSummary = null;
+    for (const p of providers) {
+      aiSummary = await fetchAi(p.url, p.key, p.model, p.headers);
+      if (aiSummary) break;
+    }
+
+    if (aiSummary) {
+      return NextResponse.json({ summary: aiSummary });
+    }
+
+    // ---- Local smart summary logic (fallback, no API key worked) ----
     const stepsText = steps.length
       ? steps.map((s, i) => `${i + 1}. ${s.message || "User action"}`).join("\n")
       : "1. Open application\n2. Perform actions on screen\n3. Observed issue";

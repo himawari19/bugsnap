@@ -482,6 +482,7 @@ function CapturesContent() {
     let cancelled = false;
     pageRef.current = 0;
     setLoadingMore(false);
+    setLoading(true);
     (async () => {
       const from = 0;
       const to = PAGE_SIZE - 1;
@@ -534,21 +535,9 @@ function CapturesContent() {
     [hasMore, loadingMore, loadPage]
   );
 
-  // Displayed captures, restricted to the active workspace & folder when present.
-  // Client-side filter guards against the workspace_id/folder_name column not existing
-  // yet on the DB — in that case captures have no workspace_id/folder_name and all show.
-  const workspaceCaptures = captures.filter(
-    (c) =>
-      (!wsParam ||
-        wsParam === "all" ||
-        c.workspace_id === undefined ||
-        c.workspace_id === null ||
-        c.workspace_id === wsParam) &&
-      (!folderParam ||
-        c.folder_name === undefined ||
-        c.folder_name === null ||
-        c.folder_name === folderParam)
-  );
+  // The Supabase query already applies workspace_id/folder_name filters server-side
+  // (see the fetch effect above), so no redundant client-side re-filter is needed here.
+  const workspaceCaptures = captures;
 
   const handleCopyLink = async (id: string) => {
     setDeleteError(null);
@@ -1056,10 +1045,22 @@ function CapturesContent() {
 
               {/* 3-dot menu - hidden in select mode */}
               {!selectMode && (
-                <div className="absolute top-2.5 right-2.5">
+                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                  <button
+                    aria-label="Copy Link"
+                    title="Copy link"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCopyLink(item.id); }}
+                    className="w-7 h-7 rounded-md bg-white/90 border border-border text-muted hover:text-emerald-600 hover:bg-emerald-50 flex items-center justify-center shadow-sm transition-colors"
+                  >
+                    {copiedId === item.id ? (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.1-1.1m-.758-4.9a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                    )}
+                  </button>
                   <button
                     aria-label="Capture actions"
-                    onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
                     className="w-7 h-7 rounded-md bg-white/90 border border-border text-muted hover:text-foreground hover:bg-white flex items-center justify-center shadow-sm transition-colors"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">

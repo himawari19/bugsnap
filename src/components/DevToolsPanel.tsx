@@ -161,11 +161,10 @@ export default function DevToolsPanel({ capture }: Props) {
   
   const networkLogs = logs
     .filter((l): l is NetworkLog => l.type === "network")
-    .filter((l) => !l.status || l.status >= 400 || ["warn", "warning", "error"].includes(normalizeLevel(l.level)))
     .filter((l) => {
       if (isTracker(l.url)) return false;
       const matchesQuery = !logSearch || (l.url || "").toLowerCase().includes(logSearch.toLowerCase());
-      const isErr = normalizeLevel(l.level) === "error" || !l.status || l.status >= 500;
+      const isErr = !l.status || l.status >= 400 || normalizeLevel(l.level) === "error";
       const matchesError = !showErrorsOnly || isErr;
       return matchesQuery && matchesError;
     });
@@ -277,7 +276,7 @@ export default function DevToolsPanel({ capture }: Props) {
       <div className="h-11 border-b border-border px-4 flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-foreground">DevTools</span>
         <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-          {totalLogCount(logs)} events
+          {totalLogCount(consoleLogs) + totalLogCount(networkLogs) + totalLogCount(actionLogs)} events
         </span>
       </div>
 
@@ -318,15 +317,26 @@ export default function DevToolsPanel({ capture }: Props) {
               />
             </div>
             {(activeTab === "Console" || activeTab === "Network") && (
-              <label className="flex items-center gap-2 text-[10px] text-muted cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={showErrorsOnly}
-                  onChange={(e) => setShowErrorsOnly(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-border text-indigo-600 focus:ring-indigo-500"
-                />
-                Show Errors Only
-              </label>
+              <div className="flex bg-border/50 p-0.5 rounded-lg shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowErrorsOnly(false)}
+                  className={`flex-1 px-3 py-1.5 text-[10px] font-semibold rounded-md transition-colors ${
+                    !showErrorsOnly ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowErrorsOnly(true)}
+                  className={`flex-1 px-3 py-1.5 text-[10px] font-semibold rounded-md transition-colors flex items-center justify-center gap-1 ${
+                    showErrorsOnly ? "bg-red-50 text-red-600 shadow-sm border border-red-100" : "text-muted hover:text-red-500"
+                  }`}
+                >
+                  Errors Only
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -479,7 +489,7 @@ export default function DevToolsPanel({ capture }: Props) {
                     return (
                       <tr key={i} className="group border-b border-border/70 hover:bg-subtle/60">
                         <td className="px-2 py-1.5 font-mono font-semibold uppercase">{log.method || "GET"}</td>
-                        <td className={`px-1 py-1.5 font-mono font-semibold ${!log.status || log.status >= 400 ? "text-red-600" : "text-amber-700"}`}>{log.status || "FAILED"}</td>
+                        <td className={`px-1 py-1.5 font-mono font-semibold ${!log.status || log.status >= 400 ? "text-red-600" : log.status < 300 ? "text-emerald-600" : "text-amber-700"}`}>{log.status || "FAILED"}</td>
                         <td className="truncate px-1 py-1.5 text-muted" title={log.resourceType || "xhr"}>{log.resourceType || "xhr"}</td>
                         <td className="min-w-0 px-1 py-1.5" title={fullLocation}>
                           <div className="flex min-w-0 items-center gap-1">
